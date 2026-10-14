@@ -35,7 +35,11 @@ yarn-error.log*
 
 # vercel
 .vercel
+CLAUDE.md
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# uploaded files (staff photos) -- personal data, never committed
+/.uploads/

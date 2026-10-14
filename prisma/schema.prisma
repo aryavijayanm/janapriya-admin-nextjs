@@ -1,0 +1,112 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 no longer accepts `url` here -- the connection string lives in
+// prisma.config.ts for CLI commands (migrate/introspect), and is passed to
+// PrismaClient at runtime through a driver adapter. See server/db/client.ts.
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  OWNER
+  STAFF
+  OUTSIDER
+}
+
+// ACTIVE: normal, assignable. DISABLED: no new duties, but record and
+// history stay visible. DELETED: soft-delete -- hidden from normal lists,
+// but the row stays (never hard-deleted) so past duty/order records that
+// reference this staffId keep resolving instead of breaking a foreign key.
+enum StaffStatus {
+  ACTIVE
+  DISABLED
+  DELETED
+}
+
+model User {
+  id            Int       @id @default(autoincrement())
+  username      String    @unique
+  password      String
+  name          String
+  role          Role
+  designation   String?
+  is_active     Boolean   @default(true)
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  updated_at    DateTime  @updatedAt @db.Timestamptz
+  last_login_at DateTime? @db.Timestamptz
+
+  sessions Session[]
+}
+
+// Database-backed sessions, deliberately not JWT: deleting a row revokes
+// access immediately, which is what makes logout real, password changes
+// kick out an attacker, and a disabled user lose access on their next
+// request rather than whenever a token happens to expire.
+//
+// `id` is the SHA-256 hash of the random token held in the cookie, never
+// the token itself -- so a stolen database dump contains no usable
+// sessions. SHA-256 rather than bcrypt is correct here: the token is
+// already 32 bytes of entropy, so there is nothing to brute-force and no
+// reason to pay for slow hashing on every request.
+model Session {
+  id         String   @id
+  userId     Int
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt  DateTime @db.Timestamptz
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  @@index([userId])
+}
+
+model Service {
+  id           Int      @id @default(autoincrement())
+  name         String   @unique
+  abbreviation String   @unique
+  is_active    Boolean  @default(true)
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @updatedAt @db.Timestamptz
+
+  staff StaffService[]
+}
+
+model Staff {
+  id                       Int         @id @default(autoincrement())
+  name                     String
+  place                    String
+  contactNumber            String
+  dob                      DateTime?   @db.Date
+  guardianName             String?
+  relationshipWithGuardian String?
+  guardianContactNumber    String?
+  verifiedAddress          String?
+  idProof                  String?
+  idNumber                 String?
+  bankAccountDetails       String?
+  rating                   Int         @default(5)
+  remarks                  String?
+  // Storage key of the photo (e.g. "staff/3f2a....jpg"), never a URL -- the
+  // URL depends on where files live (local folder now, Cloudflare R2 later)
+  // and is computed when the page renders. Null = no photo (it's optional).
+  photoKey                 String?
+  status                   StaffStatus @default(ACTIVE)
+  created_at               DateTime    @default(now()) @db.Timestamptz
+  updated_at               DateTime    @updatedAt @db.Timestamptz
+
+  services StaffService[]
+}
+
+// Join table for Staff <-> Service. Deliberately no is_active column here --
+// a staff member currently offering a service is represented by the row's
+// existence; removing it (not flagging it) means "they stopped." Whether the
+// service itself is still offered at all lives on Service.is_active, checked
+// via the join at read time -- never copied/cached onto this table.
+model StaffService {
+  staffId   Int
+  serviceId Int
+  staff     Staff   @relation(fields: [staffId], references: [id])
+  service   Service @relation(fields: [serviceId], references: [id])
+
+  @@id([staffId, serviceId])
+}
