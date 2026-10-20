@@ -6,21 +6,42 @@
 
 const KERALA_TIME_ZONE = "Asia/Kolkata";
 
-export function formatDateTime(value: string | Date): string {
-    const date = typeof value === "string" ? new Date(value) : value;
-    return date.toLocaleString("en-IN", {
+// Day, month and year of `date` in Kerala time, zero-padded ("05", "11",
+// "2026"). Assembled from parts rather than trusting a locale's own ordering,
+// so the result is always DD/MM/YYYY whatever language the browser or server
+// is set to.
+function keralaDateParts(date: Date): { day: string; month: string; year: string } {
+    const parts = new Intl.DateTimeFormat("en-GB", {
         timeZone: KERALA_TIME_ZONE,
-        dateStyle: "medium",
-        timeStyle: "short",
-    });
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+    }).formatToParts(date);
+    const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((p) => p.type === type)?.value ?? "";
+    return { day: part("day"), month: part("month"), year: part("year") };
 }
 
+/**
+ * The app-wide on-screen date format: DD/MM/YYYY, e.g. "15/11/2026".
+ * (The database stores real DATE values, which have no format; this is
+ * only how they're shown.)
+ */
 export function formatDate(value: string | Date): string {
     const date = typeof value === "string" ? new Date(value) : value;
-    return date.toLocaleDateString("en-IN", {
+    const { day, month, year } = keralaDateParts(date);
+    return `${day}/${month}/${year}`;
+}
+
+/** Date and time in Kerala time, e.g. "15/11/2026, 3:05 pm". */
+export function formatDateTime(value: string | Date): string {
+    const date = typeof value === "string" ? new Date(value) : value;
+    const time = date.toLocaleTimeString("en-IN", {
         timeZone: KERALA_TIME_ZONE,
-        dateStyle: "medium",
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
     });
+    return `${formatDate(date)}, ${time}`;
 }
 
 // yyyy-mm-dd, the only format <input type="date"> accepts as its value --

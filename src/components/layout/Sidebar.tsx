@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Users, CreditCard, Banknote, LayoutDashboard, UserPlus, UserRoundCog, UserRoundPlus, Trash2, ShieldCheck, Eye, type LucideIcon } from "lucide-react";
+import { Users, ClipboardList, ClipboardPlus, CreditCard, Banknote, LayoutDashboard, UserPlus, UserRoundCog, UserRoundPlus, ShieldCheck, type LucideIcon } from "lucide-react";
 import type { AuthUser } from "@/server/services/authz";
 
 interface SidebarProps {
@@ -66,8 +66,19 @@ export function Sidebar({ user, isOpen }: SidebarProps) {
                     <div className="space-y-1">
                         <MenuLink href="/customer/new" icon={UserPlus} label="Add Customer" isOpen={isOpen} pathname={pathname} />
                         <MenuLink href="/customer" icon={Users} label="View Customers" isOpen={isOpen} pathname={pathname} />
-                        <MenuLink href="/customer" icon={Eye} label="View All Customers" isOpen={isOpen} pathname={pathname} />
-                        <MenuLink href="/customer/delete" icon={Trash2} label="Delete Customer" isOpen={isOpen} pathname={pathname} />
+                    </div>
+                </div>
+
+                {/* ORDERS */}
+                <div>
+                    {isOpen && (
+                        <h3 className="px-4 text-xs font-semibold uppercase tracking-wider text-gray-400 mb-2 whitespace-nowrap">
+                            Orders
+                        </h3>
+                    )}
+                    <div className="space-y-1">
+                        <MenuLink href="/orders/new" icon={ClipboardPlus} label="New Order" isOpen={isOpen} pathname={pathname} />
+                        <MenuLink href="/orders" icon={ClipboardList} label="View Orders" isOpen={isOpen} pathname={pathname} />
                     </div>
                 </div>
 

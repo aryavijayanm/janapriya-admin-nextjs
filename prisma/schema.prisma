@@ -68,7 +68,8 @@ model Service {
   created_at   DateTime @default(now()) @db.Timestamptz
   updated_at   DateTime @updatedAt @db.Timestamptz
 
-  staff StaffService[]
+  staff  StaffService[]
+  orders OrderService[]
 }
 
 model Staff {
@@ -95,6 +96,7 @@ model Staff {
   updated_at               DateTime    @updatedAt @db.Timestamptz
 
   services StaffService[]
+  duties   StaffAssignment[]
 }
 
 // Join table for Staff <-> Service. Deliberately no is_active column here --
@@ -109,4 +111,150 @@ model StaffService {
   service   Service @relation(fields: [serviceId], references: [id])
 
   @@id([staffId, serviceId])
+}
+
+// Same three states as StaffStatus: DELETED hides a customer from every list,
+// but the row stays, so their future orders and payment history keep resolving.
+enum CustomerStatus {
+  ACTIVE
+  DISABLED
+  DELETED
+}
+
+// The person who pays. One row per person, even with several orders.
+//
+// New tables use camelCase for EVERY column, timestamps included
+// (createdAt, not created_at). Older tables keep their existing names.
+model Customer {
+  id             Int            @id @default(autoincrement())
+  name           String
+  address        String
+  // Digits and an optional leading "+", no fixed prefix -- a customer can be
+  // anywhere in the world. Duplicate detection compares the last 10 digits.
+  contactNumber1 String
+  contactNumber2 String?
+  idProof        String?
+  idNumber       String?
+  email          String?
+  remarks        String?
+  status         CustomerStatus @default(ACTIVE)
+  // Filled in automatically by Prisma. Can't be recovered later if left out:
+  // "customer since", newest-first lists, monthly counts, and spotting two
+  // people editing the same customer all depend on them.
+  createdAt      DateTime       @default(now()) @db.Timestamptz
+  updatedAt      DateTime       @updatedAt @db.Timestamptz
+
+  orders CustomerOrder[]
+}
+
+// ===== Orders, contracts and staff duty ======================================
+//
+// Customer ──< CustomerOrder ──< Contract          (28 days of SERVICE each)
+//                   │  └──< OrderService >── Service
+//                   └──< StaffAssignment >── Staff (who worked, when)
+//
+// A contract's dates are CALCULATED from the duty periods: a day counts only
+// if some staff covered it, so leave without a replacement stretches the
+// contract. Only contract #1's start date is ever typed in.
+
+// KERALA today; OUTSIDE is a planned expansion. OUTSIDER-role users can't see
+// OUTSIDE orders (enforced in order.service).
+enum Branch {
+  KERALA
+  OUTSIDE
+}
+
+// The first and last day of a duty period: worked the whole day, or half.
+enum DayPart {
+  FULL
+  HALF
+}
+
+// One booking of care for a customer. A customer can have several.
+model CustomerOrder {
+  id         Int       @id @default(autoincrement())
+  // 4 random consonants ("KXQT"), unique. Used in URLs and on screen instead
+  // of the id, so OUTSIDE orders can't be found by guessing the next number.
+  code       String    @unique
+  customerId Int
+  customer   Customer  @relation(fields: [customerId], references: [id])
+  branch     Branch    @default(KERALA)
+  remarks    String?
+  // Set when the order is ended (step 2, with refunds). Null = still running.
+  endDate    DateTime? @db.Date
+  createdAt  DateTime  @default(now()) @db.Timestamptz
+  updatedAt  DateTime  @updatedAt @db.Timestamptz
+
+  services  OrderService[]
+  contracts Contract[]
+  duties    StaffAssignment[]
+
+  @@index([customerId])
+  @@index([branch])
+}
+
+// Which services an order covers -- same shape as StaffService. A separate
+// table (not an array) so the database guarantees every serviceId is real.
+model OrderService {
+  orderId   Int
+  serviceId Int
+  order     CustomerOrder @relation(fields: [orderId], references: [id])
+  service   Service       @relation(fields: [serviceId], references: [id])
+
+  @@id([orderId, serviceId])
+}
+
+// One 28-day billing period of an order.
+model Contract {
+  id             Int           @id @default(autoincrement())
+  orderId        Int
+  order          CustomerOrder @relation(fields: [orderId], references: [id])
+  // 1, 2, 3 within the order -- what people see. (`id` is the database's own key.)
+  contractNumber Int
+  // #1's start is typed at "Start care"; every other date is calculated from
+  // the duty periods. Null while pending (no staff, so the end isn't known yet).
+  startDate      DateTime?     @db.Date
+  endDate        DateTime?     @db.Date
+  // Days of service used so far, 0-28. Calculated with the dates. Shown as
+  // "17 / 28", and used for refunds when an order stops early (step 2).
+  servedDays     Int           @default(0)
+  // Whole rupees. Copied from the previous contract, editable.
+  rate           Int // what the customer pays for these 28 days of service
+  staffSalary    Int // what staff earn per 28 days in this contract
+  createdAt      DateTime      @default(now()) @db.Timestamptz
+  updatedAt      DateTime      @updatedAt @db.Timestamptz
+
+  @@unique([orderId, contractNumber])
+}
+
+// One duty period: one staff member working on one order from a date, until a
+// date (null = still working there). Leave is NOT a row -- it's the gap
+// between two periods.
+//
+// Linked to the ORDER, not a contract: one period often spans several
+// contracts, and contract dates are calculated FROM these periods, so a
+// contractId here would have to be re-split every time leave moved a contract
+// boundary. "Who worked on contract #2" = periods whose dates overlap #2's.
+// The contract link is frozen later, in the step-3 earned (salary) rows.
+model StaffAssignment {
+  id           Int            @id @default(autoincrement())
+  orderId      Int
+  order        CustomerOrder  @relation(fields: [orderId], references: [id])
+  staffId      Int
+  staff        Staff          @relation(fields: [staffId], references: [id])
+  startDate    DateTime       @db.Date
+  startDayPart DayPart        @default(FULL)
+  endDate      DateTime?      @db.Date
+  endDayPart   DayPart?
+  // Optional "why" when someone stops ("hospitalised", "family function").
+  // There's deliberately no leave/replaced/exit field: on the day someone
+  // stops nobody knows which it is. The app works it out from what happens
+  // next on the order (same staff returns = leave, someone else starts =
+  // handover, nothing yet = "no staff since").
+  endNote      String?
+  createdAt    DateTime       @default(now()) @db.Timestamptz
+  updatedAt    DateTime       @updatedAt @db.Timestamptz
+
+  @@index([orderId])
+  @@index([staffId])
 }

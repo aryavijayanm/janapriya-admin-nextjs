@@ -49,6 +49,30 @@ function buildOrderBy(sortBy: StaffSortBy, sortDir: SortDir): Prisma.StaffOrderB
     return { [sortBy]: sortDir };
 }
 
+/**
+ * The staff search: one text box matched across these fields. Shared by the
+ * staff list and the order page's staff picker, so both always search the
+ * same way. Excludes rating, relationshipWithGuardian, idProof (by request),
+ * and dob/status (not text columns).
+ */
+export function staffSearchWhere(search: string): Prisma.StaffWhereInput {
+    // Escaped: unescaped, a search for "_" or "%" matches every row (verified).
+    const term = escapeLike(search);
+    return {
+        OR: [
+            { name: { contains: term, mode: "insensitive" } },
+            { place: { contains: term, mode: "insensitive" } },
+            { contactNumber: { contains: term, mode: "insensitive" } },
+            { guardianName: { contains: term, mode: "insensitive" } },
+            { guardianContactNumber: { contains: term, mode: "insensitive" } },
+            { verifiedAddress: { contains: term, mode: "insensitive" } },
+            { idNumber: { contains: term, mode: "insensitive" } },
+            { bankAccountDetails: { contains: term, mode: "insensitive" } },
+            { remarks: { contains: term, mode: "insensitive" } },
+        ],
+    };
+}
+
 /** One page of the staff list, with sort, service filter and search. */
 export async function listStaff(
     db: Db,
@@ -58,9 +82,6 @@ export async function listStaff(
     assertRole(user, STAFF_MODULE_ROLES);
 
     const { page, sortBy = "name", sortDir = "asc", serviceIds, search } = query;
-    // Escaped once, used for every field: unescaped, a search for "_" or "%"
-    // matches every row (verified against the real database).
-    const term = search ? escapeLike(search) : undefined;
 
     // Soft-deleted staff stay in the table (so past duty/order history keeps
     // resolving their name) but never appear in a normal list.
@@ -72,24 +93,8 @@ export async function listStaff(
         ...(serviceIds && serviceIds.length > 0
             ? { services: { some: { serviceId: { in: serviceIds } } } }
             : {}),
-        // One search box, matched across whichever of these fields contains it.
-        // Excludes rating, relationshipWithGuardian, idProof (by request), and
-        // dob/status (not text columns).
-        ...(term
-            ? {
-                OR: [
-                    { name: { contains: term, mode: "insensitive" } },
-                    { place: { contains: term, mode: "insensitive" } },
-                    { contactNumber: { contains: term, mode: "insensitive" } },
-                    { guardianName: { contains: term, mode: "insensitive" } },
-                    { guardianContactNumber: { contains: term, mode: "insensitive" } },
-                    { verifiedAddress: { contains: term, mode: "insensitive" } },
-                    { idNumber: { contains: term, mode: "insensitive" } },
-                    { bankAccountDetails: { contains: term, mode: "insensitive" } },
-                    { remarks: { contains: term, mode: "insensitive" } },
-                ],
-            }
-            : {}),
+        // One search box across most text fields -- see staffSearchWhere.
+        ...(search ? staffSearchWhere(search) : {}),
     };
 
     // id as a tiebreaker. Sorting by rating, most staff tie at the default 5,

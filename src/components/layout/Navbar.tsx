@@ -15,16 +15,21 @@ interface NavbarProps {
 export function Navbar({ user, onToggleSidebar }: NavbarProps) {
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
     const [staffSearch, setStaffSearch] = useState("");
+    const [customerSearch, setCustomerSearch] = useState("");
     const router = useRouter();
 
-    // Navigates to the staff list with this search applied -- a fresh
-    // search from the navbar (which can be triggered from any page) starts
-    // from a clean slate rather than trying to preserve whatever sort/filter/
-    // page happened to be set on whatever page the user was previously on.
-    const runStaffSearch = () => {
-        const trimmed = staffSearch.trim();
-        router.push(trimmed ? `/staff?search=${encodeURIComponent(trimmed)}` : "/staff");
+    // Navigates to a list with this search applied -- a fresh search from the
+    // navbar (which can be triggered from any page) starts from a clean slate
+    // rather than trying to preserve whatever sort/filter/page happened to be
+    // set on whatever page the user was previously on.
+    const runSearch = (listPath: "/staff" | "/customer", text: string) => {
+        const trimmed = text.trim();
+        router.push(trimmed ? `${listPath}?search=${encodeURIComponent(trimmed)}` : listPath);
     };
+    const runStaffSearch = () => runSearch("/staff", staffSearch);
+    // A customer code like "CR-000042" works here too -- the customer service
+    // recognises it and matches that customer directly.
+    const runCustomerSearch = () => runSearch("/customer", customerSearch);
 
     return (
         <header className="h-16 bg-white border-b border-gray-100 px-4 flex items-center justify-between sticky shadow-lg top-0 z-40">
@@ -42,11 +47,21 @@ export function Navbar({ user, onToggleSidebar }: NavbarProps) {
                     <input
                         type="text"
                         placeholder="Search Customer..."
+                        value={customerSearch}
+                        onChange={(e) => setCustomerSearch(e.target.value)}
+                        onKeyDown={(e) => {
+                            if (e.key === "Enter") runCustomerSearch();
+                        }}
                         className="pl-4 pr-10 py-2 rounded-2xl bg-white border border-gray-300 focus:outline-none focus:ring-1 focus:ring-gray-600 focus:border-transparent text-sm w-64"
                     />
-                    <div className="absolute right-3">
+                    <button
+                        type="button"
+                        onClick={runCustomerSearch}
+                        aria-label="Search Customer"
+                        className="absolute right-3"
+                    >
                         <Search className="h-5 w-5 text-gray-400" />
-                    </div>
+                    </button>
                 </div>
 
                 {/* Search Staff */}
