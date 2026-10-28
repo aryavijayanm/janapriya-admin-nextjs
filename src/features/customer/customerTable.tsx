@@ -46,6 +46,7 @@ export default function CustomerTable({ customers, pagination }: CustomerTablePr
         {
             header: "Code",
             accessor: (c) => <span className="font-mono text-xs text-gray-600">{formatCustomerCode(c.id)}</span>,
+            sortKey: "code",
         },
         { header: "Name", accessor: "name", sortKey: "name" },
         { header: "Contact", accessor: "contactNumber1" },

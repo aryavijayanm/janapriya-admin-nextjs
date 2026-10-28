@@ -39,25 +39,29 @@ export function UpdateDutyDialog({ orderId, onDutyStaffName, today, onClose }: U
 
     // "stop" fields
     const [stopDate, setStopDate] = useState(today);
-    const [stopDayPart, setStopDayPart] = useState<DayPartValue>("FULL");
+    const [stopDayPart, setStopDayPart] = useState<DayPartValue | "">("");
     const [endNote, setEndNote] = useState("");
     const [hasNext, setHasNext] = useState(false);
 
     // The starting staff: the next one in "stop" mode, or the one in "start" mode.
     const [staff, setStaff] = useState<PickedStaff | null>(null);
     const [startDate, setStartDate] = useState(today);
-    const [startDayPart, setStartDayPart] = useState<DayPartValue>("FULL");
+    const [startDayPart, setStartDayPart] = useState<DayPartValue | "">("");
 
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
 
-    // Ticking "someone takes over" suggests the natural start: the same day
-    // as a half-day handover, otherwise the day after the stop. Still editable.
+    // Ticking "someone takes over" suggests the next start DATE -- never after
+    // today (duty is entered once it has happened): the day after a full last
+    // day, otherwise the same day (half-day handover, or left early unpaid).
+    // The next staff's first day (full/half/no pay) is NOT filled in: it must
+    // be chosen, like every day part.
     const handleHasNextChange = (checked: boolean) => {
         setHasNext(checked);
         if (checked && stopDate) {
-            setStartDate(stopDayPart === "HALF" ? stopDate : dayAfter(stopDate));
-            setStartDayPart(stopDayPart);
+            const suggested = stopDayPart === "FULL" ? dayAfter(stopDate) : stopDate;
+            setStartDate(suggested > today ? today : suggested);
+            setStartDayPart("");
             setStaff(null);
         }
     };
@@ -95,6 +99,7 @@ export function UpdateDutyDialog({ orderId, onDutyStaffName, today, onClose }: U
                     <Input
                         id="duty-start-date"
                         type="date"
+                        max={today}
                         value={startDate}
                         onChange={(e) => {
                             setStartDate(e.target.value);
@@ -130,6 +135,7 @@ export function UpdateDutyDialog({ orderId, onDutyStaffName, today, onClose }: U
                                 <Input
                                     id="stop-date"
                                     type="date"
+                                    max={today}
                                     value={stopDate}
                                     onChange={(e) => setStopDate(e.target.value)}
                                 />

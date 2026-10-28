@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { StaffPicker, type PickedStaff } from "@/features/order/StaffPicker";
 import { DayPartSelect, type DayPartValue } from "@/features/order/dutyFields";
-import { cancelDutyAction, editDutyAction } from "@/features/order/order.actions";
+import { editDutyAction } from "@/features/order/order.actions";
 import { editDutySchema } from "@/server/validators/order";
 
 /** One duty period as the order page has it. */
@@ -27,8 +27,8 @@ export interface EditableDuty {
 interface EditDutyDialogProps {
     orderId: number;
     duty: EditableDuty;
-    /** Not started yet and not the order's only period -- the parent decides. */
-    canCancel: boolean;
+    /** Kerala's today, yyyy-mm-dd -- the latest date allowed (duty is entered once it has happened). */
+    today: string;
     onClose: () => void;
 }
 
@@ -36,31 +36,22 @@ interface EditDutyDialogProps {
 const toIso = (date: Date) => date.toISOString().slice(0, 10);
 
 // Corrects one duty period (wrong date, wrong staff, a stop entered too early).
-// Contract dates recalculate on the server after saving. A period that hasn't
-// started yet can also be cancelled -- a plan that didn't happen.
-export function EditDutyDialog({ orderId, duty, canCancel, onClose }: EditDutyDialogProps) {
+// Contract dates recalculate on the server after saving. There is no delete:
+// a duty period is a fact, and a removed one couldn't be put back in between
+// two others -- so mistakes are fixed by editing.
+export function EditDutyDialog({ orderId, duty, today, onClose }: EditDutyDialogProps) {
     const [staff, setStaff] = useState<PickedStaff | null>(duty.staff);
     const [startDate, setStartDate] = useState(toIso(duty.startDate));
     const [startDayPart, setStartDayPart] = useState<DayPartValue>(duty.startDayPart);
     const [stillWorking, setStillWorking] = useState(duty.endDate === null);
     const [endDate, setEndDate] = useState(duty.endDate ? toIso(duty.endDate) : startDate);
-    const [endDayPart, setEndDayPart] = useState<DayPartValue>(duty.endDayPart ?? "FULL");
+    // A saved stop keeps its choice; adding a stop (unticking "Still working")
+    // starts empty and must be chosen.
+    const [endDayPart, setEndDayPart] = useState<DayPartValue | "">(duty.endDayPart ?? "");
     const [endNote, setEndNote] = useState(duty.endNote ?? "");
 
-    const [confirmingCancel, setConfirmingCancel] = useState(false);
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
-
-    const run = async (action: () => ReturnType<typeof editDutyAction>) => {
-        setIsSubmitting(true);
-        try {
-            const result = await action();
-            if (result.ok) onClose();
-            else setError(result.error);
-        } finally {
-            setIsSubmitting(false);
-        }
-    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -84,7 +75,14 @@ export function EditDutyDialog({ orderId, duty, canCancel, onClose }: EditDutyDi
             return;
         }
 
-        await run(() => editDutyAction(orderId, duty.id, payload));
+        setIsSubmitting(true);
+        try {
+            const result = await editDutyAction(orderId, duty.id, payload);
+            if (result.ok) onClose();
+            else setError(result.error);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     return (
@@ -103,6 +101,7 @@ export function EditDutyDialog({ orderId, duty, canCancel, onClose }: EditDutyDi
                         <Input
                             id="edit-start-date"
                             type="date"
+                            max={today}
                             value={startDate}
                             onChange={(e) => setStartDate(e.target.value)}
                         />
@@ -126,6 +125,7 @@ export function EditDutyDialog({ orderId, duty, canCancel, onClose }: EditDutyDi
                                 <Input
                                     id="edit-end-date"
                                     type="date"
+                                    max={today}
                                     value={endDate}
                                     onChange={(e) => setEndDate(e.target.value)}
                                 />
@@ -145,61 +145,14 @@ export function EditDutyDialog({ orderId, duty, canCancel, onClose }: EditDutyDi
                     </>
                 )}
 
-                {confirmingCancel ? (
-                    <div className="space-y-3 rounded-lg border border-red-200 bg-red-50 p-4">
-                        <p className="text-sm text-red-800">
-                            Cancel this planned duty? It is removed completely. If it was a handover, the previous
-                            staff member&apos;s planned stop is cleared too.
-                        </p>
-                        <div className="flex justify-end gap-2">
-                            <Button
-                                type="button"
-                                variant="secondary"
-                                size="sm"
-                                onClick={() => setConfirmingCancel(false)}
-                                disabled={isSubmitting}
-                            >
-                                Keep it
-                            </Button>
-                            <Button
-                                type="button"
-                                variant="danger"
-                                size="sm"
-                                isLoading={isSubmitting}
-                                onClick={() => {
-                                    setError("");
-                                    void run(() => cancelDutyAction(orderId, duty.id));
-                                }}
-                            >
-                                Yes, cancel duty
-                            </Button>
-                        </div>
-                    </div>
-                ) : (
-                    <div className="flex flex-wrap items-center justify-between gap-2 pt-2">
-                        <div>
-                            {canCancel && (
-                                <Button
-                                    type="button"
-                                    variant="ghost"
-                                    onClick={() => setConfirmingCancel(true)}
-                                    disabled={isSubmitting}
-                                    className="text-red-600"
-                                >
-                                    Cancel this planned duty
-                                </Button>
-                            )}
-                        </div>
-                        <div className="flex gap-2">
-                            <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
-                                Close
-                            </Button>
-                            <Button type="submit" isLoading={isSubmitting}>
-                                Save
-                            </Button>
-                        </div>
-                    </div>
-                )}
+                <div className="flex justify-end gap-2 pt-2">
+                    <Button type="button" variant="secondary" onClick={onClose} disabled={isSubmitting}>
+                        Cancel
+                    </Button>
+                    <Button type="submit" isLoading={isSubmitting}>
+                        Save
+                    </Button>
+                </div>
 
                 {error && <Alert variant="error">{error}</Alert>}
             </form>

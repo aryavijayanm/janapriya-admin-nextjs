@@ -5,7 +5,7 @@ import { z } from "zod";
 // import: this file ends up in the browser bundle.
 
 export const BRANCHES = ["KERALA", "OUTSIDE"] as const;
-export const DAY_PARTS = ["FULL", "HALF"] as const;
+export const DAY_PARTS = ["FULL", "HALF", "NO_PAY"] as const;
 /** Worked out from the data, never stored (see order.service). */
 export const ORDER_STATUSES = ["WAITING", "ACTIVE", "ENDED"] as const;
 
@@ -29,7 +29,10 @@ const id = z.number().int().positive();
 // <input type="date"> always sends yyyy-mm-dd, whatever the screen shows.
 const dateField = (label: string) => z.iso.date({ error: `${label} is not a valid date` });
 
-const dayPart = z.enum(DAY_PARTS);
+// Required, with no default on screen: a pre-selected "Full day" would be
+// saved whenever someone forgot to change it. "" (nothing chosen) fails here.
+const dayPart = (which: string) =>
+    z.enum(DAY_PARTS, { error: `Please choose Full day, Half day or No pay for the ${which}` });
 
 // Whole rupees, more than zero.
 const rupees = (label: string) =>
@@ -56,7 +59,7 @@ export const orderSchema = z.object({
 
 export const startCareSchema = z.object({
     startDate: dateField("Start date"),
-    startDayPart: dayPart,
+    startDayPart: dayPart("first day"),
     staffId: z.number({ error: "Please choose a staff member" }).int().positive(),
     rate: rupees("Customer rate"),
     staffSalary: rupees("Staff salary"),
@@ -69,14 +72,14 @@ export const startCareSchema = z.object({
 const nextStaffSchema = z.object({
     staffId: z.number({ error: "Please choose the next staff member" }).int().positive(),
     startDate: dateField("Next staff start date"),
-    startDayPart: dayPart,
+    startDayPart: dayPart("next staff's first day"),
 });
 
 export const updateDutySchema = z.discriminatedUnion("mode", [
     z.object({
         mode: z.literal("stop"),
         stopDate: dateField("Stop date"),
-        stopDayPart: dayPart,
+        stopDayPart: dayPart("last day"),
         endNote: optionalText,
         next: nextStaffSchema.nullable(),
     }),
@@ -84,7 +87,7 @@ export const updateDutySchema = z.discriminatedUnion("mode", [
         mode: z.literal("start"),
         staffId: z.number({ error: "Please choose a staff member" }).int().positive(),
         startDate: dateField("Start date"),
-        startDayPart: dayPart,
+        startDayPart: dayPart("first day"),
     }),
 ]);
 
@@ -94,9 +97,9 @@ export const editDutySchema = z
     .object({
         staffId: id,
         startDate: dateField("Start date"),
-        startDayPart: dayPart,
+        startDayPart: dayPart("first day"),
         endDate: dateField("End date").nullable(),
-        endDayPart: dayPart.nullable(),
+        endDayPart: dayPart("last day").nullable(),
         endNote: optionalText,
     })
     .refine((d) => d.endDate === null || d.endDate >= d.startDate, {

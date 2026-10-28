@@ -9,8 +9,8 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/app/_lib/session";
 import { invalidInput, toActionError, type ActionFailure } from "@/app/_lib/action-result";
 import {
-    cancelDuty,
     createOrder,
+    deleteLatestContract,
     editDuty,
     listAssignableStaff,
     startCare,
@@ -109,15 +109,6 @@ export async function editDutyAction(orderId: unknown, dutyId: unknown, input: u
     return save(() => editDuty(db, user, oId.data, dId.data, parsed.data));
 }
 
-export async function cancelDutyAction(orderId: unknown, dutyId: unknown): Promise<OrderSaveResult> {
-    const { db, user } = await requireUser();
-    const oId = orderIdSchema.safeParse(orderId);
-    if (!oId.success) return invalidInput(oId.error);
-    const dId = dutyIdSchema.safeParse(dutyId);
-    if (!dId.success) return invalidInput(dId.error);
-    return save(() => cancelDuty(db, user, oId.data, dId.data));
-}
-
 export async function startNextContractAction(orderId: unknown, input: unknown): Promise<OrderSaveResult> {
     const { db, user } = await requireUser();
     const id = orderIdSchema.safeParse(orderId);
@@ -134,6 +125,13 @@ export async function updateContractMoneyAction(contractId: unknown, input: unkn
     const parsed = contractMoneySchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
     return save(() => updateContractMoney(db, user, id.data, parsed.data));
+}
+
+export async function deleteContractAction(contractId: unknown): Promise<OrderSaveResult> {
+    const { db, user } = await requireUser();
+    const id = contractIdSchema.safeParse(contractId);
+    if (!id.success) return invalidInput(id.error);
+    return save(() => deleteLatestContract(db, user, id.data));
 }
 
 /** The staff picker's search, called while typing. Reads only -- nothing to refresh. */

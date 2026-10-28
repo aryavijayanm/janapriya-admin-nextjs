@@ -32,5 +32,24 @@ export function useSort() {
         [searchParams, router, sortBy, sortDir],
     );
 
-    return { sortBy, sortDir, toggleSort };
+    // On/off instead of asc/desc: first click sorts by `key` in `dir`, the next
+    // click removes the sort, back to the list's normal order. (The quiet
+    // "latest registered first" sort on the staff list.)
+    const toggleSortOnOff = useCallback(
+        (key: string, dir: SortDir) => {
+            const params = new URLSearchParams(searchParams.toString());
+            if (sortBy === key) {
+                params.delete("sortBy");
+                params.delete("sortDir");
+            } else {
+                params.set("sortBy", key);
+                params.set("sortDir", dir);
+            }
+            params.set("page", "1");
+            router.push(`?${params.toString()}`);
+        },
+        [searchParams, router, sortBy],
+    );
+
+    return { sortBy, sortDir, toggleSort, toggleSortOnOff };
 }

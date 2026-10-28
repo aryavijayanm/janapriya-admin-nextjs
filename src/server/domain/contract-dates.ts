@@ -1,12 +1,12 @@
 // The contract-dates rule, as a pure function: no database, no Next.js.
 //
 // A contract is 28 days of SERVICE, not 28 calendar days. A day counts only if
-// some staff duty period covers it (any part of it -- half days still count),
-// so a gap with no staff stretches the contract. Only contract #1's start date
-// is ever typed in; every end date, and every later start date, is worked out
-// here from the duty periods:
+// some staff worked it FULL or HALF (half days still count; NO_PAY days don't),
+// so a gap with no staff -- or a no-pay-only day -- stretches the contract.
+// No contract date is ever typed in; all are worked out here from the duty
+// periods:
 //
-//   #1 start = typed at "Start care"
+//   #1 start = the first paid duty day
 //   #1 end   = the day the 28th served day is reached
 //   #2 start = the day after #1 ends, and so on
 //
@@ -16,6 +16,7 @@
 // Pure, so it can be tested with plain examples and moves to NestJS unchanged.
 
 import { fromDayNumber, toDayNumber } from "./days";
+import { isPaidDay, type DutyDayFacts } from "./duty";
 
 export const SERVICE_DAYS_PER_CONTRACT = 28;
 
@@ -31,11 +32,8 @@ export function nextContractOpensOn(latestContractEnd: Date): Date {
     return fromDayNumber(toDayNumber(latestContractEnd) - (NEXT_CONTRACT_WINDOW_DAYS - 1));
 }
 
-/** A duty period, as far as dates are concerned. endDate null = still working. */
-export interface DutyDates {
-    startDate: Date;
-    endDate: Date | null;
-}
+/** A duty period's dates and first/last-day parts. endDate null = still working. */
+export type DutyDates = DutyDayFacts;
 
 export interface CalculatedContractDates {
     /** null only when an earlier contract's end is still pending. */
@@ -55,20 +53,26 @@ export function calculateContractDates(
     duties: DutyDates[],
     contractCount: number,
 ): CalculatedContractDates[] {
-    const periods = duties.map((duty) => ({
-        start: toDayNumber(duty.startDate),
-        end: duty.endDate === null ? Number.POSITIVE_INFINITY : toDayNumber(duty.endDate),
-    }));
-
     // The last day any period covers (Infinity if someone is still working).
     // Once the walk passes it, no later day can ever be served.
-    const lastCoveredDay = periods.reduce((latest, p) => Math.max(latest, p.end), Number.NEGATIVE_INFINITY);
+    const lastCoveredDay = duties.reduce(
+        (latest, d) => Math.max(latest, d.endDate === null ? Number.POSITIVE_INFINITY : toDayNumber(d.endDate)),
+        Number.NEGATIVE_INFINITY,
+    );
 
-    const isServed = (day: number) => periods.some((p) => p.start <= day && day <= p.end);
+    // Served = some staff worked it FULL or HALF. A NO_PAY day (joined late,
+    // left early) is recorded on the duty period but never counted.
+    const isServed = (day: number) => duties.some((duty) => isPaidDay(duty, day));
 
     const results: CalculatedContractDates[] = [];
     let day = toDayNumber(firstStartDate);
     let pending = false;
+
+    // Contract #1 starts on the first PAID day: care that begins with a
+    // no-pay day (arrived late evening) starts the contract the next day.
+    // If no paid day exists yet, #1 keeps the first duty day, with end pending.
+    while (day <= lastCoveredDay && !isServed(day)) day++;
+    if (day > lastCoveredDay) day = toDayNumber(firstStartDate);
 
     for (let i = 0; i < contractCount; i++) {
         if (pending) {

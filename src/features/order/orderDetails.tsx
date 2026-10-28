@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CalendarPlus, FileText, Hash, MapPin, Pencil, Phone, Play, StickyNote, UserRound, Users } from "lucide-react";
+import { ArrowLeft, CalendarPlus, FileText, Hash, MapPin, Pencil, Phone, Play, StickyNote, Trash2, UserRound, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatDate } from "@/lib/date";
@@ -15,6 +15,7 @@ import { StartCareDialog } from "@/features/order/StartCareDialog";
 import { UpdateDutyDialog } from "@/features/order/UpdateDutyDialog";
 import { EditDutyDialog, type EditableDuty } from "@/features/order/EditDutyDialog";
 import { ContractMoneyDialog, type ContractMoneyTarget } from "@/features/order/ContractMoneyDialog";
+import { DeleteContractDialog } from "@/features/order/DeleteContractDialog";
 
 interface OrderDetailsProps {
     order: Order;
@@ -29,8 +30,9 @@ interface OrderDetailsProps {
 type OpenDialog =
     | { kind: "startCare" }
     | { kind: "updateDuty" }
-    | { kind: "editDuty"; duty: EditableDuty; canCancel: boolean }
+    | { kind: "editDuty"; duty: EditableDuty }
     | { kind: "money"; target: ContractMoneyTarget; rate: number; staffSalary: number }
+    | { kind: "deleteContract"; contractId: number; contractNumber: number }
     | null;
 
 // DATE columns arrive as midnight UTC, so the first 10 characters are the day.
@@ -59,12 +61,13 @@ function FactChip({ icon: Icon, children }: { icon: LucideIcon; children: React.
     );
 }
 
-/** "12/11/2026" or "12/11/2026 (half day)". */
-function DayWithPart({ date, part }: { date: Date; part: "FULL" | "HALF" | null }) {
+/** "12/11/2026", "12/11/2026 (half day)" or "12/11/2026 (no pay)". */
+function DayWithPart({ date, part }: { date: Date; part: "FULL" | "HALF" | "NO_PAY" | null }) {
     return (
         <>
             {formatDate(date)}
             {part === "HALF" && <span className="text-gray-500"> (half day)</span>}
+            {part === "NO_PAY" && <span className="text-gray-500"> (no pay)</span>}
         </>
     );
 }
@@ -100,8 +103,6 @@ export default function OrderDetails({ order, gaps, nextContract, today }: Order
                 endDayPart: duty.endDayPart,
                 endNote: duty.endNote,
             },
-            // Only a plan that hasn't started can be removed; someone worked the rest.
-            canCancel: toIso(duty.startDate) > today && order.duties.length > 1,
         });
 
     return (
@@ -252,6 +253,24 @@ export default function OrderDetails({ order, gaps, nextContract, today }: Order
                                                         <Pencil className="w-4 h-4" />
                                                     </Button>
                                                 )}
+                                                {/* Only a contract started by mistake: latest, not #1, nothing served. */}
+                                                {!isEnded && c.id === latest?.id && c.contractNumber > 1 && c.servedDays === 0 && (
+                                                    <Button
+                                                        variant="ghost"
+                                                        size="sm"
+                                                        aria-label={`Delete contract #${c.contractNumber}`}
+                                                        className="text-red-600"
+                                                        onClick={() =>
+                                                            setDialog({
+                                                                kind: "deleteContract",
+                                                                contractId: c.id,
+                                                                contractNumber: c.contractNumber,
+                                                            })
+                                                        }
+                                                    >
+                                                        <Trash2 className="w-4 h-4" />
+                                                    </Button>
+                                                )}
                                             </td>
                                         </tr>
                                     ))}
@@ -370,7 +389,14 @@ export default function OrderDetails({ order, gaps, nextContract, today }: Order
                 <EditDutyDialog
                     orderId={order.id}
                     duty={dialog.duty}
-                    canCancel={dialog.canCancel}
+                    today={today}
+                    onClose={() => setDialog(null)}
+                />
+            )}
+            {dialog?.kind === "deleteContract" && (
+                <DeleteContractDialog
+                    contractId={dialog.contractId}
+                    contractNumber={dialog.contractNumber}
                     onClose={() => setDialog(null)}
                 />
             )}

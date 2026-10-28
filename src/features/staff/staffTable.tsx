@@ -32,7 +32,7 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
     const router = useRouter();
     const searchParams = useSearchParams();
     const { setPage } = usePagination();
-    const { sortBy, sortDir, toggleSort } = useSort();
+    const { sortBy, sortDir, toggleSort, toggleSortOnOff } = useSort();
     // Tracks which row's enable/disable request is in flight, so only that
     // row's button shows a loading state instead of the whole table.
     const [togglingId, setTogglingId] = useState<number | null>(null);
@@ -98,6 +98,11 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
         },
         {
             header: "Actions",
+            // Office shortcut: clicking this header shows latest registered
+            // first, clicking again goes back to normal. Deliberately invisible
+            // (no arrows) so nobody else spots who joined most recently.
+            sortKey: "recent",
+            quietSort: true,
             accessor: (s) => (
                 // Row itself navigates to /staff/:id on click -- stop that click
                 // from reaching the row for every button in here, so Edit/toggle
@@ -173,7 +178,7 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
                 onRowClick={(s) => router.push(`/staff/${s.id}`)}
                 sortBy={sortBy}
                 sortDir={sortDir}
-                onSortChange={toggleSort}
+                onSortChange={(key) => (key === "recent" ? toggleSortOnOff(key, "desc") : toggleSort(key))}
             />
         </div>
     );

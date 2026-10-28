@@ -164,10 +164,12 @@ enum Branch {
   OUTSIDE
 }
 
-// The first and last day of a duty period: worked the whole day, or half.
+// The first and last day of a duty period: worked the whole day, half, or was
+// there without pay (joined late / left early) -- NO_PAY is never counted.
 enum DayPart {
   FULL
   HALF
+  NO_PAY
 }
 
 // One booking of care for a customer. A customer can have several.

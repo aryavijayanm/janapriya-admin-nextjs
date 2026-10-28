@@ -63,6 +63,16 @@ function today(): Date {
     return fromIsoDate(todayInKerala());
 }
 
+/**
+ * Duty is entered only after it has really happened (staff may or may not
+ * turn up as planned), so no duty date may be in the future.
+ */
+function assertNotFuture(date: Date, label: string) {
+    if (toDayNumber(date) > toDayNumber(today())) {
+        throw new ValidationError(`${label} can't be in the future. Enter duty once it has happened.`);
+    }
+}
+
 function isPrismaError(error: unknown, code: "P2002"): boolean {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
 }
@@ -331,7 +341,8 @@ export async function updateOrder(
  * Throws unless `candidate` (a duty period) may be saved on `orderId`: the
  * staff member is Active (when newly placed) and the period clashes with
  * nothing -- neither that staff member's periods on ANY order, nor other
- * periods on THIS order -- apart from a half-day + half-day handover.
+ * periods on THIS order -- apart from one shared day that is half + half, or
+ * no pay for one of them (see dutyPeriodsClash).
  */
 async function assertDutyAllowed(
     tx: Tx,
@@ -370,7 +381,7 @@ async function assertDutyAllowed(
             throw new ValidationError(`${staff.name} is already on ${where} ${when}`);
         }
         throw new ValidationError(
-            `${other.staff.name} is on duty on this order ${when}. Stop them first, or use a half-day handover.`,
+            `${other.staff.name} is on duty on this order ${when}. Stop them first. A shared day must be half + half, or one of them no pay.`,
         );
     }
 }
@@ -383,7 +394,11 @@ async function assertDutyAllowed(
  */
 async function recalculateContracts(tx: Tx, orderId: number) {
     const [duties, contracts] = await Promise.all([
-        tx.staffAssignment.findMany({ where: { orderId }, select: { startDate: true, endDate: true } }),
+        // Day parts too: NO_PAY first/last days are not served days.
+        tx.staffAssignment.findMany({
+            where: { orderId },
+            select: { startDate: true, startDayPart: true, endDate: true, endDayPart: true },
+        }),
         tx.contract.findMany({ where: { orderId }, orderBy: { contractNumber: "asc" }, select: { id: true } }),
     ]);
     if (contracts.length === 0) return;
@@ -429,6 +444,7 @@ export async function startCare(
             endDate: null,
             endDayPart: null,
         };
+        assertNotFuture(duty.startDate, "The start date");
         await assertDutyAllowed(tx, user, orderId, duty, { requireActiveStaff: true });
 
         await tx.staffAssignment.create({ data: { orderId, ...duty } });
@@ -466,6 +482,7 @@ export async function updateDuty(
         if (input.mode === "stop") {
             if (!open) throw new ValidationError("Nobody is on duty on this order right now");
             const stopDate = fromIsoDate(input.stopDate);
+            assertNotFuture(stopDate, "The stop date");
             if (toDayNumber(stopDate) < toDayNumber(open.startDate)) {
                 throw new ValidationError(
                     `The stop date can't be before ${open.staff.name} started (${formatDayMonthYear(open.startDate)})`,
@@ -484,6 +501,7 @@ export async function updateDuty(
                     endDate: null,
                     endDayPart: null,
                 };
+                assertNotFuture(next.startDate, "The next staff's start date");
                 // Checked AFTER the stop is saved, so the handover day is judged
                 // against the stop just entered.
                 await assertDutyAllowed(tx, user, orderId, next, { requireActiveStaff: true });
@@ -500,6 +518,7 @@ export async function updateDuty(
                 endDate: null,
                 endDayPart: null,
             };
+            assertNotFuture(duty.startDate, "The start date");
             await assertDutyAllowed(tx, user, orderId, duty, { requireActiveStaff: true });
             await tx.staffAssignment.create({ data: { orderId, ...duty } });
         }
@@ -531,6 +550,8 @@ export async function editDuty(
             endDate: input.endDate ? fromIsoDate(input.endDate) : null,
             endDayPart: input.endDate ? (input.endDayPart ?? "FULL") : null,
         };
+        assertNotFuture(candidate.startDate, "The start date");
+        if (candidate.endDate) assertNotFuture(candidate.endDate, "The stop date");
         // Correcting dates on a period whose staff has since been disabled is
         // fine; putting a DIFFERENT, inactive staff member on it is not.
         await assertDutyAllowed(tx, user, orderId, candidate, {
@@ -542,56 +563,6 @@ export async function editDuty(
             where: { id: dutyId },
             data: { ...candidate, endNote: input.endDate ? input.endNote : null },
         });
-        await recalculateContracts(tx, orderId);
-        return { code: order.code };
-    });
-}
-
-/**
- * Cancels a duty period that hasn't started yet -- a planned change that
- * didn't happen. Periods that have started can only be edited, never removed:
- * someone worked those days. If the cancelled period was a planned handover,
- * the previous staff's stop is cleared again -- but only if that stop was also
- * still in the future (a real, past stop stays).
- */
-export async function cancelDuty(
-    db: Db,
-    user: AuthUser,
-    orderId: number,
-    dutyId: number,
-): Promise<{ code: string }> {
-    assertRole(user, ORDER_MODULE_ROLES);
-
-    return db.$transaction(async (tx) => {
-        const order = await getVisibleOrderForUpdate(tx, user, orderId);
-        const duty = await tx.staffAssignment.findFirst({ where: { id: dutyId, orderId } });
-        if (!duty) throw new NotFoundError("Duty period not found");
-
-        const todayDay = toDayNumber(today());
-        const start = toDayNumber(duty.startDate);
-        if (start <= todayDay) {
-            throw new ValidationError("This duty has already started, so it can't be cancelled. Edit it instead.");
-        }
-        const otherCount = await tx.staffAssignment.count({ where: { orderId, id: { not: dutyId } } });
-        if (otherCount === 0) {
-            throw new ValidationError("This is the order's only duty period. Edit it instead.");
-        }
-
-        await tx.staffAssignment.delete({ where: { id: dutyId } });
-
-        // The period that handed over to the cancelled one (ended that day or the day before).
-        const previous = await tx.staffAssignment.findFirst({
-            where: { orderId, endDate: { gte: fromDayNumber(start - 1), lte: fromDayNumber(start) } },
-            orderBy: { endDate: "desc" },
-        });
-        const stillOpen = await tx.staffAssignment.count({ where: { orderId, endDate: null } });
-        if (previous?.endDate && toDayNumber(previous.endDate) >= todayDay && stillOpen === 0) {
-            await tx.staffAssignment.update({
-                where: { id: previous.id },
-                data: { endDate: null, endDayPart: null, endNote: null },
-            });
-        }
-
         await recalculateContracts(tx, orderId);
         return { code: order.code };
     });
@@ -673,6 +644,46 @@ export async function updateContractMoney(
     });
 }
 
+/**
+ * Removes a contract started by mistake ("Start next contract" pressed, then
+ * the customer stopped). Only the LATEST contract, never #1, and only while it
+ * has 0 served days -- so no worked day, and no history, can ever be lost.
+ * (Step 2 adds: and no payments against it.)
+ */
+export async function deleteLatestContract(db: Db, user: AuthUser, contractId: number): Promise<{ code: string }> {
+    assertRole(user, ORDER_MODULE_ROLES);
+
+    return db.$transaction(async (tx) => {
+        const contract = await tx.contract.findUnique({
+            where: { id: contractId },
+            select: { orderId: true, contractNumber: true, servedDays: true },
+        });
+        if (!contract) throw new NotFoundError("Contract not found");
+        const order = await getVisibleOrderForUpdate(tx, user, contract.orderId);
+
+        if (contract.contractNumber === 1) {
+            throw new ValidationError("Contract #1 can't be deleted");
+        }
+        const latest = await tx.contract.findFirst({
+            where: { orderId: contract.orderId },
+            orderBy: { contractNumber: "desc" },
+            select: { contractNumber: true },
+        });
+        if (latest?.contractNumber !== contract.contractNumber) {
+            throw new ValidationError("Only the latest contract can be deleted");
+        }
+        // servedDays is recalculated with every duty change, so it's current here.
+        if (contract.servedDays > 0) {
+            throw new ValidationError(
+                `Contract #${contract.contractNumber} already has ${contract.servedDays} served days, so it can't be deleted`,
+            );
+        }
+
+        await tx.contract.delete({ where: { id: contractId } });
+        return { code: order.code };
+    });
+}
+
 // ---------------------------------------------------------------------------
 // Staff picker
 // ---------------------------------------------------------------------------
@@ -733,7 +744,10 @@ export async function listAssignableStaff(
             staffId: { in: staff.map((s) => s.id) },
             orderId: { not: params.orderId },
             startDate: { lte: day },
-            OR: [{ endDate: null }, { endDate: { gte: day } }],
+            // "gt", not "gte": someone whose other duty ENDS on this day may
+            // still share it (half + half, or a no-pay day) -- so they stay
+            // pickable, and assertDutyAllowed decides on the exact day parts.
+            OR: [{ endDate: null }, { endDate: { gt: day } }],
         },
         select: { staffId: true, endDate: true, order: { select: { code: true, branch: true } } },
     });

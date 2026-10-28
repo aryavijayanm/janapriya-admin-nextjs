@@ -6,7 +6,9 @@ import { z } from "zod";
 // this file ends up in the browser bundle.
 
 export const STAFF_STATUSES = ["ACTIVE", "DISABLED", "DELETED"] as const;
-export const STAFF_SORT_KEYS = ["name", "age", "rating"] as const;
+// "recent" = registered date. A neutral name on purpose: it's the hidden sort
+// behind the Actions header, so the address bar shouldn't spell it out.
+export const STAFF_SORT_KEYS = ["name", "age", "rating", "recent"] as const;
 
 // Photo limits, shared with the browser so it can refuse a bad file before a
 // slow upload. Keep STAFF_PHOTO_MAX_BYTES at or below next.config.ts's

@@ -6,22 +6,32 @@ import { Input } from "@/components/ui/Input";
 // Small inputs shared by the order dialogs (Start care, Update duty, Edit
 // duty, contract money) -- written once instead of in each dialog.
 
-export type DayPartValue = "FULL" | "HALF";
+export type DayPartValue = "FULL" | "HALF" | "NO_PAY";
 
-/** "Full day" / "Half day" for the first or last day of a duty period. */
+/**
+ * "Full day" / "Half day" / "No pay" for the first or last day of a duty
+ * period. No pay = the staff was there (joined late, left early) but the day
+ * isn't paid or counted -- the date is kept just to know when they came/left.
+ */
 export function DayPartSelect({
     id,
     value,
     onChange,
 }: {
     id: string;
-    value: DayPartValue;
+    // "" = nothing chosen yet. Never pre-selected: a default would be saved
+    // whenever someone forgot to change it (the schema requires a choice).
+    value: DayPartValue | "";
     onChange: (value: DayPartValue) => void;
 }) {
     return (
         <Select id={id} value={value} onChange={(e) => onChange(e.target.value as DayPartValue)}>
+            <option value="" disabled>
+                Select…
+            </option>
             <option value="FULL">Full day</option>
             <option value="HALF">Half day</option>
+            <option value="NO_PAY">No pay</option>
         </Select>
     );
 }

@@ -46,6 +46,7 @@ function buildOrderBy(sortBy: StaffSortBy, sortDir: SortDir): Prisma.StaffOrderB
         // them FIRST when sorting youngest-first.
         return { dob: { sort: sortDir === "asc" ? "desc" : "asc", nulls: "last" } };
     }
+    if (sortBy === "recent") return { created_at: sortDir };
     return { [sortBy]: sortDir };
 }
 

@@ -11,6 +11,10 @@ export interface TableColumn<T> {
     // Present only on columns the backend actually knows how to sort by --
     // this is the key sent to onSortChange, not a display value.
     sortKey?: string;
+    // A sort nobody should notice: the header looks exactly like plain text
+    // (no arrows, no hover) but still sends sortKey when clicked. Used for the
+    // staff list's "latest registered first" behind the Actions header.
+    quietSort?: boolean;
 }
 
 interface TableProps<T> {
@@ -61,7 +65,16 @@ export function Table<T>({
                                         colIndex === 0 && "sticky left-0 z-10 bg-gray-200",
                                     )}
                                 >
-                                    {sortable ? (
+                                    {sortable && col.quietSort ? (
+                                        // "uppercase": buttons don't inherit text-transform from the <th>.
+                                        <button
+                                            type="button"
+                                            onClick={() => onSortChange(col.sortKey!)}
+                                            className="uppercase cursor-default"
+                                        >
+                                            {col.header}
+                                        </button>
+                                    ) : sortable ? (
                                         <button
                                             type="button"
                                             onClick={() => onSortChange(col.sortKey!)}

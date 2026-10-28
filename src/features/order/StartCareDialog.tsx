@@ -22,7 +22,7 @@ interface StartCareDialogProps {
 // is ever typed for a contract -- every end date is calculated from duty.
 export function StartCareDialog({ orderId, today, onClose }: StartCareDialogProps) {
     const [startDate, setStartDate] = useState(today);
-    const [startDayPart, setStartDayPart] = useState<DayPartValue>("FULL");
+    const [startDayPart, setStartDayPart] = useState<DayPartValue | "">("");
     const [staff, setStaff] = useState<PickedStaff | null>(null);
     const [rate, setRate] = useState(Number.NaN);
     const [staffSalary, setStaffSalary] = useState(Number.NaN);
@@ -59,6 +59,7 @@ export function StartCareDialog({ orderId, today, onClose }: StartCareDialogProp
                         <Input
                             id="start-date"
                             type="date"
+                            max={today} // care is entered once it has started
                             value={startDate}
                             onChange={(e) => {
                                 setStartDate(e.target.value);

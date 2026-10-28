@@ -153,9 +153,10 @@ export async function listCustomers(
                 : {}),
     };
 
-    // id as a tiebreaker, so customers with the same name can't repeat or
-    // go missing between pages.
-    const orderBy = [{ [sortBy]: sortDir }, { id: "asc" as const }];
+    // "code" is the id (CR-000042 = id 42). Otherwise id is the tiebreaker,
+    // so customers with the same name can't repeat or go missing between pages.
+    const orderBy: Prisma.CustomerOrderByWithRelationInput[] =
+        sortBy === "code" ? [{ id: sortDir }] : [{ [sortBy]: sortDir }, { id: "asc" }];
 
     return paginate(
         // count and findMany share one `where`, or totalPages would describe

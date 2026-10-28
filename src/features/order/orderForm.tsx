@@ -42,7 +42,10 @@ export default function OrderForm({ order, customer: preselected, services, canC
     const isEditing = !!order;
 
     const [customer, setCustomer] = useState<CustomerOption | null>(order?.customer ?? preselected ?? null);
-    const [branch, setBranch] = useState<BranchValue>(order?.branch ?? "KERALA");
+    // New order: no branch picked yet, so it can't be saved by forgetting the
+    // field ("" fails orderSchema with "Please choose a branch"). OUTSIDER never
+    // sees the field and always gets Kerala (the server forces it too).
+    const [branch, setBranch] = useState<BranchValue | "">(order?.branch ?? (canChooseBranch ? "" : "KERALA"));
     const [serviceIds, setServiceIds] = useState<number[]>(order?.serviceIds ?? []);
     const [remarks, setRemarks] = useState(order?.remarks ?? "");
     const [error, setError] = useState("");
@@ -117,6 +120,9 @@ export default function OrderForm({ order, customer: preselected, services, canC
                             onChange={(e) => setBranch(e.target.value as BranchValue)}
                             className="md:w-60"
                         >
+                            <option value="" disabled>
+                                Select branch
+                            </option>
                             <option value="KERALA">Kerala</option>
                             <option value="OUTSIDE">Outside</option>
                         </Select>

@@ -5,7 +5,8 @@ import { z } from "zod";
 // @prisma/client import: this file ends up in the browser bundle.
 
 export const CUSTOMER_STATUSES = ["ACTIVE", "DISABLED", "DELETED"] as const;
-export const CUSTOMER_SORT_KEYS = ["name"] as const;
+// "code" sorts by id -- the customer code IS the id, formatted.
+export const CUSTOMER_SORT_KEYS = ["name", "code"] as const;
 
 // --- Customer code: "CR-000042" -----------------------------------------
 // Not stored anywhere: it IS the customer's id, formatted for people (phone
