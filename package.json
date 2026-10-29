@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "cron:daily": "node --env-file=.env -e \"fetch((process.env.APP_URL||'http://localhost:3000')+'/api/cron/daily',{method:'POST',headers:{Authorization:'Bearer '+process.env.CRON_SECRET}}).then(async r=>console.log(r.status,await r.text())).catch(e=>console.error('Is the dev server running?',e.message))\""
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",

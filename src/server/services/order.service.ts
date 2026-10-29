@@ -6,7 +6,11 @@ import type { Db } from "@/server/db/client";
 import { escapeLike } from "@/server/db/like";
 import { paginate, type PaginatedResult } from "@/server/db/paginate";
 import { todayInKerala } from "@/server/domain/age";
-import { calculateContractDates, nextContractOpensOn } from "@/server/domain/contract-dates";
+import {
+    NEXT_CONTRACT_WINDOW_DAYS,
+    calculateContractDates,
+    nextContractOpensOn,
+} from "@/server/domain/contract-dates";
 import { formatDayMonthYear, fromDayNumber, fromIsoDate, toDayNumber } from "@/server/domain/days";
 import { dutyPeriodsClash, type DutyPeriodFacts } from "@/server/domain/duty";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/server/domain/errors";
@@ -220,7 +224,11 @@ export async function listOrdersForCustomer(db: Db, user: AuthUser, customerId: 
 const ORDER_DETAILS_INCLUDE = {
     customer: { select: { id: true, name: true, status: true, contactNumber1: true, address: true } },
     services: { include: { service: true }, orderBy: { service: { name: "asc" } } },
-    contracts: { orderBy: { contractNumber: "asc" } },
+    contracts: {
+        orderBy: { contractNumber: "asc" },
+        // Who confirmed the rate -- shown when hovering the rate.
+        include: { rateCheckedBy: { select: { name: true } } },
+    },
     duties: {
         orderBy: [{ startDate: "asc" }, { id: "asc" }],
         include: { staff: { select: { id: true, name: true, place: true, contactNumber: true } } },
@@ -607,6 +615,9 @@ export async function startNextContract(
                     contractNumber: latest.contractNumber + 1,
                     rate: input.rate,
                     staffSalary: input.staffSalary,
+                    // A person typed this rate, so it counts as checked by them.
+                    rateCheckedAt: new Date(),
+                    rateCheckedById: user.id,
                 },
             });
         } catch (error) {
@@ -638,9 +649,118 @@ export async function updateContractMoney(
 
         await tx.contract.update({
             where: { id: contractId },
-            data: { rate: input.rate, staffSalary: input.staffSalary },
+            // Saving the money is also confirming it: clears "check rate".
+            data: { rate: input.rate, staffSalary: input.staffSalary, rateCheckedAt: new Date(), rateCheckedById: user.id },
         });
         return { code: order.code };
+    });
+}
+
+/**
+ * "Rate is correct": someone looked at an auto-started contract's copied rate
+ * and it's still right. Records who and when; clears the order page's tag.
+ */
+export async function confirmContractRate(db: Db, user: AuthUser, contractId: number): Promise<{ code: string }> {
+    assertRole(user, ORDER_MODULE_ROLES);
+
+    return db.$transaction(async (tx) => {
+        const contract = await tx.contract.findUnique({ where: { id: contractId }, select: { orderId: true } });
+        if (!contract) throw new NotFoundError("Contract not found");
+        const order = await getVisibleOrderForUpdate(tx, user, contract.orderId);
+
+        await tx.contract.update({
+            where: { id: contractId },
+            data: { rateCheckedAt: new Date(), rateCheckedById: user.id },
+        });
+        return { code: order.code };
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Nightly job: start the next contract automatically
+// ---------------------------------------------------------------------------
+
+/** A safety stop: no order can need this many contracts in one catch-up. */
+const MAX_CONTRACTS_PER_CATCH_UP = 60;
+
+/**
+ * Creates every contract that is due, for every running order. Called by the
+ * nightly job (server/jobs), not by a person -- so there is no `user` and no
+ * branch rule: it works on ALL orders.
+ *
+ * Due = the order hasn't ended, someone is still on duty (care continues), and
+ * today is on/after nextContractOpensOn() of the latest contract (2 days
+ * before its end). The new contract copies the latest one's rate and salary,
+ * marked autoStarted so the order page asks someone to check the rate.
+ *
+ * Safe to run any number of times: it only ever creates what is due, and the
+ * unique (order, contract number) rule refuses a duplicate if a person presses
+ * "Start next contract" at the same moment. It also catches up: after days
+ * without a run, it keeps creating until the order is current.
+ *
+ * Finding candidates is one query on stored end dates (indexed) -- no
+ * day-by-day counting here; that already happened when duty was saved.
+ */
+export async function startDueContracts(db: Db): Promise<{ created: number }> {
+    const todayDay = toDayNumber(today());
+    // opensOn <= today  <=>  end <= today + (window - 1)
+    const latestEndAtMost = fromDayNumber(todayDay + NEXT_CONTRACT_WINDOW_DAYS - 1);
+
+    const candidates = await db.customerOrder.findMany({
+        where: {
+            endDate: null,
+            duties: { some: { endDate: null } }, // someone on duty
+            contracts: { some: { endDate: { lte: latestEndAtMost } } },
+        },
+        select: { id: true },
+    });
+
+    let created = 0;
+    for (const { id } of candidates) {
+        try {
+            created += await catchUpOrderContracts(db, id, todayDay);
+        } catch (error) {
+            // One bad order must not stop the others; it's retried next run.
+            console.error(`Nightly job: could not start the next contract for order ${id}:`, error);
+        }
+    }
+    return { created };
+}
+
+/** Creates this order's due contracts, one after another, in one transaction. */
+async function catchUpOrderContracts(db: Db, orderId: number, todayDay: number): Promise<number> {
+    return db.$transaction(async (tx) => {
+        let created = 0;
+        for (let i = 0; i < MAX_CONTRACTS_PER_CATCH_UP; i++) {
+            // Re-checked inside the transaction: things may have changed since the candidate query.
+            const order = await tx.customerOrder.findUnique({
+                where: { id: orderId },
+                select: {
+                    endDate: true,
+                    _count: { select: { duties: { where: { endDate: null } } } },
+                    contracts: { orderBy: { contractNumber: "desc" }, take: 1 },
+                },
+            });
+            const latest = order?.contracts[0];
+            if (!order || order.endDate !== null || order._count.duties === 0) break;
+            if (!latest?.endDate) break; // end still pending: nothing is due
+            if (todayDay < toDayNumber(nextContractOpensOn(latest.endDate))) break; // not yet
+
+            await tx.contract.create({
+                data: {
+                    orderId,
+                    contractNumber: latest.contractNumber + 1,
+                    rate: latest.rate,
+                    staffSalary: latest.staffSalary,
+                    autoStarted: true,
+                },
+            });
+            // Gives the new contract its dates, so the loop can see whether
+            // the one after it is due too.
+            await recalculateContracts(tx, orderId);
+            created++;
+        }
+        return created;
     });
 }
 

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, CalendarPlus, FileText, Hash, MapPin, Pencil, Phone, Play, StickyNote, Trash2, UserRound, Users } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
-import { formatDate } from "@/lib/date";
+import { formatDate, formatDateTime } from "@/lib/date";
 import { formatCustomerCode } from "@/server/validators/customer";
 import type { OrderDetails as Order } from "@/server/services/order.service";
 import type { CoverageGap } from "@/server/domain/duty";
@@ -33,7 +33,7 @@ type OpenDialog =
     | { kind: "startCare" }
     | { kind: "updateDuty" }
     | { kind: "editDuty"; duty: EditableDuty }
-    | { kind: "money"; target: ContractMoneyTarget; rate: number; staffSalary: number }
+    | { kind: "money"; target: ContractMoneyTarget; rate: number; staffSalary: number; needsRateCheck?: boolean }
     | { kind: "deleteContract"; contractId: number; contractNumber: number }
     | null;
 
@@ -248,9 +248,25 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
                                                 )}
                                             </td>
                                             <td className="py-2 pr-4">{c.servedDays}/28</td>
-                                            <td className="py-2 pr-4 text-right">{rupees(c.rate)}</td>
+                                            <td
+                                                className="py-2 pr-4 text-right"
+                                                // Who set or confirmed this rate, on hover.
+                                                title={
+                                                    c.rateCheckedAt
+                                                        ? `Rate checked by ${c.rateCheckedBy?.name ?? "a removed user"} on ${formatDateTime(c.rateCheckedAt)}`
+                                                        : undefined
+                                                }
+                                            >
+                                                {rupees(c.rate)}
+                                            </td>
                                             <td className="py-2 pr-4 text-right">{rupees(c.staffSalary)}</td>
-                                            <td className="py-2 text-right">
+                                            <td className="py-2 text-right whitespace-nowrap">
+                                                {/* Started by the nightly job with a copied rate, not yet checked by a person. */}
+                                                {!isEnded && c.autoStarted && !c.rateCheckedAt && (
+                                                    <span className="mr-1 inline-flex items-center rounded-full bg-amber-100 px-2.5 py-0.5 text-xs font-semibold text-amber-800">
+                                                        Auto-started · check rate
+                                                    </span>
+                                                )}
                                                 {!isEnded && (
                                                     <Button
                                                         variant="ghost"
@@ -262,6 +278,7 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
                                                                 target: { kind: "edit", contractId: c.id, contractNumber: c.contractNumber },
                                                                 rate: c.rate,
                                                                 staffSalary: c.staffSalary,
+                                                                needsRateCheck: c.autoStarted && !c.rateCheckedAt,
                                                             })
                                                         }
                                                     >
@@ -420,6 +437,7 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
                     target={dialog.target}
                     initialRate={dialog.rate}
                     initialStaffSalary={dialog.staffSalary}
+                    needsRateCheck={dialog.needsRateCheck}
                     onClose={() => setDialog(null)}
                 />
             )}

@@ -9,6 +9,7 @@ import { revalidatePath } from "next/cache";
 import { requireUser } from "@/app/_lib/session";
 import { invalidInput, toActionError, type ActionFailure } from "@/app/_lib/action-result";
 import {
+    confirmContractRate,
     createOrder,
     deleteLatestContract,
     editDuty,
@@ -125,6 +126,14 @@ export async function updateContractMoneyAction(contractId: unknown, input: unkn
     const parsed = contractMoneySchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
     return save(() => updateContractMoney(db, user, id.data, parsed.data));
+}
+
+/** "Rate is correct" on an auto-started contract. */
+export async function confirmContractRateAction(contractId: unknown): Promise<OrderSaveResult> {
+    const { db, user } = await requireUser();
+    const id = contractIdSchema.safeParse(contractId);
+    if (!id.success) return invalidInput(id.error);
+    return save(() => confirmContractRate(db, user, id.data));
 }
 
 export async function deleteContractAction(contractId: unknown): Promise<OrderSaveResult> {

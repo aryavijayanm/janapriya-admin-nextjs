@@ -37,7 +37,8 @@ model User {
   updated_at    DateTime  @updatedAt @db.Timestamptz
   last_login_at DateTime? @db.Timestamptz
 
-  sessions Session[]
+  sessions         Session[]
+  checkedContracts Contract[] // contracts whose rate this user confirmed
 }
 
 // Database-backed sessions, deliberately not JWT: deleting a row revokes
@@ -208,25 +209,37 @@ model OrderService {
 
 // One 28-day billing period of an order.
 model Contract {
-  id             Int           @id @default(autoincrement())
-  orderId        Int
-  order          CustomerOrder @relation(fields: [orderId], references: [id])
+  id              Int           @id @default(autoincrement())
+  orderId         Int
+  order           CustomerOrder @relation(fields: [orderId], references: [id])
   // 1, 2, 3 within the order -- what people see. (`id` is the database's own key.)
-  contractNumber Int
-  // #1's start is typed at "Start care"; every other date is calculated from
-  // the duty periods. Null while pending (no staff, so the end isn't known yet).
-  startDate      DateTime?     @db.Date
-  endDate        DateTime?     @db.Date
+  contractNumber  Int
+  // Every date is calculated from the duty periods (#1 starts on the first
+  // paid duty day). Null while pending (no staff, so the end isn't known yet).
+  startDate       DateTime?     @db.Date
+  endDate         DateTime?     @db.Date
   // Days of service used so far, 0-28. Calculated with the dates. Shown as
   // "17 / 28", and used for refunds when an order stops early (step 2).
-  servedDays     Int           @default(0)
+  servedDays      Int           @default(0)
   // Whole rupees. Copied from the previous contract, editable.
-  rate           Int // what the customer pays for these 28 days of service
-  staffSalary    Int // what staff earn per 28 days in this contract
-  createdAt      DateTime      @default(now()) @db.Timestamptz
-  updatedAt      DateTime      @updatedAt @db.Timestamptz
+  rate            Int // what the customer pays for these 28 days of service
+  staffSalary     Int // what staff earn per 28 days in this contract
+  // true = created by the nightly job (rate copied, nobody chose it); false =
+  // started by a person (Start care / the button). Kept forever as history.
+  autoStarted     Boolean       @default(false)
+  // Who confirmed the rate, and when ("Rate is correct", or saving the money).
+  // The order page tags a contract "Auto-started · check rate" while
+  // autoStarted is true and rateCheckedAt is still empty. SetNull: deleting a
+  // user never fails because they once confirmed a rate.
+  rateCheckedAt   DateTime?     @db.Timestamptz
+  rateCheckedById Int?
+  rateCheckedBy   User?         @relation(fields: [rateCheckedById], references: [id], onDelete: SetNull)
+  createdAt       DateTime      @default(now()) @db.Timestamptz
+  updatedAt       DateTime      @updatedAt @db.Timestamptz
 
   @@unique([orderId, contractNumber])
+  // The nightly job looks contracts up by end date.
+  @@index([endDate])
 }
 
 // One duty period: one staff member working on one order from a date, until a
@@ -239,14 +252,14 @@ model Contract {
 // boundary. "Who worked on contract #2" = periods whose dates overlap #2's.
 // The contract link is frozen later, in the step-3 earned (salary) rows.
 model StaffAssignment {
-  id           Int            @id @default(autoincrement())
+  id           Int           @id @default(autoincrement())
   orderId      Int
-  order        CustomerOrder  @relation(fields: [orderId], references: [id])
+  order        CustomerOrder @relation(fields: [orderId], references: [id])
   staffId      Int
-  staff        Staff          @relation(fields: [staffId], references: [id])
-  startDate    DateTime       @db.Date
-  startDayPart DayPart        @default(FULL)
-  endDate      DateTime?      @db.Date
+  staff        Staff         @relation(fields: [staffId], references: [id])
+  startDate    DateTime      @db.Date
+  startDayPart DayPart       @default(FULL)
+  endDate      DateTime?     @db.Date
   endDayPart   DayPart?
   // Optional "why" when someone stops ("hospitalised", "family function").
   // There's deliberately no leave/replaced/exit field: on the day someone
@@ -254,8 +267,8 @@ model StaffAssignment {
   // next on the order (same staff returns = leave, someone else starts =
   // handover, nothing yet = "no staff since").
   endNote      String?
-  createdAt    DateTime       @default(now()) @db.Timestamptz
-  updatedAt    DateTime       @updatedAt @db.Timestamptz
+  createdAt    DateTime      @default(now()) @db.Timestamptz
+  updatedAt    DateTime      @updatedAt @db.Timestamptz
 
   @@index([orderId])
   @@index([staffId])
