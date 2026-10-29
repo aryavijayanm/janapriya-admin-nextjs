@@ -22,6 +22,8 @@ interface OrderDetailsProps {
     gaps: CoverageGap[];
     /** null while the latest contract's end is still pending (or no contract yet). */
     nextContract: { opensOn: Date; defaultRate: number; defaultStaffSalary: number } | null;
+    /** Per contract id: days not counted (no paid staff); null = no dates yet. */
+    leaveDays: Record<number, number | null>;
     /** Kerala's today, yyyy-mm-dd. */
     today: string;
 }
@@ -72,7 +74,7 @@ function DayWithPart({ date, part }: { date: Date; part: "FULL" | "HALF" | "NO_P
     );
 }
 
-export default function OrderDetails({ order, gaps, nextContract, today }: OrderDetailsProps) {
+export default function OrderDetails({ order, gaps, nextContract, leaveDays, today }: OrderDetailsProps) {
     const router = useRouter();
     const [dialog, setDialog] = useState<OpenDialog>(null);
 
@@ -211,7 +213,11 @@ export default function OrderDetails({ order, gaps, nextContract, today }: Order
                                     <tr className="border-b border-gray-200 text-left text-xs uppercase tracking-wider text-gray-500">
                                         <th className="py-2 pr-4">#</th>
                                         <th className="py-2 pr-4">Start</th>
-                                        <th className="py-2 pr-4">End</th>
+                                        {/* An end in the future is only expected: leave can still move it. */}
+                                        <th className="py-2 pr-4">Expected / End</th>
+                                        <th className="py-2 pr-4" title="Days in this contract with no paid staff — not counted">
+                                            Leave days
+                                        </th>
                                         <th className="py-2 pr-4">Served</th>
                                         <th className="py-2 pr-4 text-right">Rate</th>
                                         <th className="py-2 pr-4 text-right">Staff salary</th>
@@ -230,6 +236,15 @@ export default function OrderDetails({ order, gaps, nextContract, today }: Order
                                                     <span className="text-amber-700" title="Depends on the next staff">
                                                         pending
                                                     </span>
+                                                )}
+                                            </td>
+                                            <td className="py-2 pr-4">
+                                                {leaveDays[c.id] == null ? (
+                                                    "—"
+                                                ) : leaveDays[c.id]! > 0 ? (
+                                                    <span className="font-semibold text-amber-700">{leaveDays[c.id]}</span>
+                                                ) : (
+                                                    0
                                                 )}
                                             </td>
                                             <td className="py-2 pr-4">{c.servedDays}/28</td>

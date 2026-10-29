@@ -4,6 +4,13 @@ import { Prisma, type Role } from "@prisma/client";
 import type { Db } from "@/server/db/client";
 import { escapeLike } from "@/server/db/like";
 import { paginate, type PaginatedResult } from "@/server/db/paginate";
+import {
+    ADDRESS_SIMILARITY_THRESHOLD,
+    MAX_DUPLICATES_SHOWN,
+    lastTenDigits,
+    normalizeIdNumber,
+    similarityPercent,
+} from "@/server/domain/duplicates";
 import { NotFoundError, ValidationError } from "@/server/domain/errors";
 import { fileStore } from "@/server/integrations/storage";
 import { ALL_ROLES, assertRole, type AuthUser } from "@/server/services/authz";
@@ -26,6 +33,91 @@ const STAFF_INCLUDE = {
 
 /** A staff row with its linked services -- what every staff screen receives. */
 export type StaffWithServices = Prisma.StaffGetPayload<{ include: typeof STAFF_INCLUDE }>;
+
+/** An existing staff member who might be the same person as the one being saved. */
+export interface PossibleDuplicateStaff {
+    id: number;
+    name: string;
+    place: string;
+    address: string | null;
+    /** Contact number matched on its last 10 digits. */
+    phoneMatch: boolean;
+    /** ID number matched, ignoring spaces, dashes and letter case. */
+    idMatch: boolean;
+    /** Address reached ADDRESS_SIMILARITY_THRESHOLD (decided here, not in the browser). */
+    addressMatch: boolean;
+    /** Address similarity as a whole percentage (0-100). */
+    addressScore: number;
+}
+
+/**
+ * Saving either succeeds or comes back with possible duplicates for the user
+ * to look at -- never both. Same shape as the customer save: a duplicate is a
+ * normal question to ask, not an error.
+ */
+export type SaveStaffResult =
+    | { kind: "saved"; staff: StaffWithServices }
+    | { kind: "possibleDuplicates"; duplicates: PossibleDuplicateStaff[] };
+
+/**
+ * Staff (not deleted, not `excludeId`) who share the contact number (last 10
+ * digits) or the ID number (ignoring spaces/dashes/case), or whose verified
+ * address is at least ADDRESS_SIMILARITY_THRESHOLD similar. Guardian numbers
+ * are left out on purpose: relatives share guardians.
+ *
+ * Raw SQL for similarity() (pg_trgm). Every ${...} is a query PARAMETER, not
+ * pasted text -- no SQL injection. "::text" tells Postgres the type of a
+ * parameter that may be null. '[^0-9]' instead of '\D': a backslash inside
+ * this template would be lost before Prisma sees it.
+ */
+async function findPossibleDuplicateStaff(
+    db: Db,
+    input: Pick<StaffInput, "contactNumber" | "idNumber" | "verifiedAddress">,
+    excludeId?: number,
+): Promise<PossibleDuplicateStaff[]> {
+    const phone = lastTenDigits(input.contactNumber);
+    const idNumber = normalizeIdNumber(input.idNumber);
+    const address = input.verifiedAddress?.trim() || null;
+
+    const rows = await db.$queryRaw<
+        {
+            id: number;
+            name: string;
+            place: string;
+            address: string | null;
+            phoneMatch: boolean;
+            idMatch: boolean;
+            score: number;
+        }[]
+    >`
+        SELECT * FROM (
+            SELECT id, name, place, "verifiedAddress" AS address,
+                   (${phone}::text <> ''
+                    AND right(regexp_replace("contactNumber", '[^0-9]', '', 'g'), 10) = ${phone}::text) AS "phoneMatch",
+                   (${idNumber}::text IS NOT NULL
+                    AND lower(regexp_replace(COALESCE("idNumber", ''), '[^a-zA-Z0-9]', '', 'g')) = ${idNumber}::text) AS "idMatch",
+                   (CASE WHEN ${address}::text IS NULL OR "verifiedAddress" IS NULL THEN 0
+                         ELSE similarity("verifiedAddress", ${address}::text) END)::float8 AS score
+            FROM "Staff"
+            WHERE status <> 'DELETED'
+              ${excludeId !== undefined ? Prisma.sql`AND id <> ${excludeId}` : Prisma.empty}
+        ) AS candidates
+        WHERE "phoneMatch" OR "idMatch" OR score >= ${ADDRESS_SIMILARITY_THRESHOLD}
+        ORDER BY "phoneMatch" DESC, "idMatch" DESC, score DESC
+        LIMIT ${MAX_DUPLICATES_SHOWN}
+    `;
+
+    return rows.map((row) => ({
+        id: row.id,
+        name: row.name,
+        place: row.place,
+        address: row.address,
+        phoneMatch: row.phoneMatch,
+        idMatch: row.idMatch,
+        addressMatch: row.score >= ADDRESS_SIMILARITY_THRESHOLD,
+        addressScore: similarityPercent(row.score),
+    }));
+}
 
 type StaffSortBy = NonNullable<StaffListQuery["sortBy"]>;
 type SortDir = "asc" | "desc";
@@ -134,8 +226,16 @@ export async function createStaff(
     user: AuthUser,
     input: StaffInput,
     photo: PhotoUpload | null,
-): Promise<StaffWithServices> {
+    options: { confirmDuplicate: boolean } = { confirmDuplicate: false },
+): Promise<SaveStaffResult> {
     assertRole(user, STAFF_MODULE_ROLES);
+
+    // Look-alike check FIRST -- before the photo is processed or stored -- so
+    // a save the user then cancels leaves no file behind.
+    if (!options.confirmDuplicate) {
+        const duplicates = await findPossibleDuplicateStaff(db, input);
+        if (duplicates.length > 0) return { kind: "possibleDuplicates", duplicates };
+    }
 
     // Process the photo BEFORE writing anything: a bad file should be refused
     // without leaving a half-created staff member behind.
@@ -151,7 +251,7 @@ export async function createStaff(
 
     const { serviceIds, dob, ...rest } = input;
     try {
-        return await db.$transaction(async (tx) => {
+        const staff = await db.$transaction(async (tx) => {
             const staff = await tx.staff.create({
                 data: { ...rest, dob: dob ? new Date(dob) : null, photoKey },
             });
@@ -166,6 +266,7 @@ export async function createStaff(
 
             return tx.staff.findUniqueOrThrow({ where: { id: staff.id }, include: STAFF_INCLUDE });
         });
+        return { kind: "saved", staff };
     } catch (error) {
         // The row never got created, so nothing points at the saved file --
         // remove it rather than leave an orphan on disk.
@@ -191,8 +292,29 @@ export async function updateStaff(
     id: number,
     input: StaffInput,
     photoChange: PhotoChange,
-): Promise<StaffWithServices> {
+    options: { confirmDuplicate: boolean } = { confirmDuplicate: false },
+): Promise<SaveStaffResult> {
     assertRole(user, STAFF_MODULE_ROLES);
+
+    if (!options.confirmDuplicate) {
+        const existing = await db.staff.findUnique({
+            where: { id },
+            select: { contactNumber: true, idNumber: true, verifiedAddress: true },
+        });
+        if (!existing) throw new NotFoundError("Staff not found");
+
+        // Only re-check when something the check looks at changed -- otherwise
+        // editing the remarks of someone who shares a house with another staff
+        // member would warn on every save. (Same rule as customers.)
+        const identityChanged =
+            existing.contactNumber !== input.contactNumber ||
+            existing.idNumber !== input.idNumber ||
+            existing.verifiedAddress !== input.verifiedAddress;
+        if (identityChanged) {
+            const duplicates = await findPossibleDuplicateStaff(db, input, id);
+            if (duplicates.length > 0) return { kind: "possibleDuplicates", duplicates };
+        }
+    }
 
     const newBytes = photoChange.upload ? await processStaffPhoto(photoChange.upload) : null;
     const newKey = newBytes ? newStaffPhotoKey() : null;
@@ -264,7 +386,7 @@ export async function updateStaff(
         });
     }
 
-    return result.staff;
+    return { kind: "saved", staff: result.staff };
 }
 
 /**

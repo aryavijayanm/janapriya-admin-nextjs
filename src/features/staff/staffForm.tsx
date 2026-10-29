@@ -13,7 +13,8 @@ import { Alert } from "@/components/ui/Alert";
 import { toDateInputValue } from "@/lib/date";
 import { createStaffAction, updateStaffAction } from "@/features/staff/staff.actions";
 import { STAFF_PHOTO_MAX_BYTES, STAFF_PHOTO_TYPES, staffSchema } from "@/server/validators/staff";
-import type { StaffWithServices } from "@/server/services/staff.service";
+import { PossibleDuplicatesModal } from "@/components/ui/PossibleDuplicatesModal";
+import type { PossibleDuplicateStaff, StaffWithServices } from "@/server/services/staff.service";
 import type { ServiceOption } from "@/server/services/service.service";
 
 const INITIAL_FORM_DATA = {
@@ -94,6 +95,8 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
     const [error, setError] = useState("");
     const [success, setSuccess] = useState(false);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    // Possible duplicates the server found; null = no warning showing.
+    const [duplicates, setDuplicates] = useState<PossibleDuplicateStaff[] | null>(null);
 
     // --- Photo state ---
     // photoFile: a newly chosen file, not yet uploaded.
@@ -185,8 +188,8 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
         });
     };
 
-    const handleSubmit = async (e: React.FormEvent) => {
-        e.preventDefault();
+    // confirmDuplicate = true is "Continue anyway": the server skips the check.
+    const save = async (confirmDuplicate: boolean) => {
         setError("");
         setSuccess(false);
 
@@ -221,6 +224,7 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
         body.set("data", JSON.stringify(data));
         if (photoFile) body.set("photo", photoFile);
         if (removePhoto) body.set("removePhoto", "true");
+        if (confirmDuplicate) body.set("confirmDuplicate", "true");
 
         setIsSubmitting(true);
         try {
@@ -229,9 +233,18 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
                 : await createStaffAction(body);
 
             if (!result.ok) {
-                setError(result.error);
+                if ("duplicates" in result) {
+                    // Not saved yet -- open the warning and let the user decide.
+                    setDuplicates(result.duplicates);
+                } else {
+                    // Close the warning (if "Continue anyway" was what failed),
+                    // so the error below the form isn't hidden behind it.
+                    setDuplicates(null);
+                    setError(result.error);
+                }
                 return;
             }
+            setDuplicates(null);
             setSuccess(true);
             // Give the user a moment to see the success message before
             // leaving -- then land on that staff member's details page,
@@ -242,6 +255,11 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
         } finally {
             setIsSubmitting(false);
         }
+    };
+
+    const handleSubmit = (e: React.FormEvent) => {
+        e.preventDefault();
+        void save(false);
     };
 
     // Initials for the empty photo circle, e.g. "Anil Kumar" -> "AK".
@@ -512,10 +530,33 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
 
                 {/* Submit Button */}
                 <div className="pt-4">
-                    <Button type="submit" isLoading={isSubmitting}>
+                    <Button type="submit" isLoading={isSubmitting && !duplicates} disabled={success}>
                         {isEditing ? "Save Changes" : "Register Staff"}
                     </Button>
                 </div>
+
+                {/* Possible-duplicate warning (shared with the customer form). */}
+                <PossibleDuplicatesModal
+                    matches={
+                        duplicates?.map((d) => ({
+                            id: d.id,
+                            href: `/staff/${d.id}`,
+                            name: d.name,
+                            reasons: [
+                                ...(d.phoneMatch ? ["Same phone"] : []),
+                                ...(d.idMatch ? ["Same ID number"] : []),
+                                ...(d.addressMatch ? [`Address ${d.addressScore}% similar`] : []),
+                            ],
+                            detail: [d.place, d.address].filter(Boolean).join(" · "),
+                        })) ?? null
+                    }
+                    title="Possible duplicate staff"
+                    message="This staff member might already be registered. Check before saving."
+                    confirmLabel="Continue anyway"
+                    isSubmitting={isSubmitting}
+                    onConfirm={() => void save(true)}
+                    onCancel={() => setDuplicates(null)}
+                />
 
                 {/* Error/success feedback goes right after the submit button --
                     on a long form, placing it at the top means the user can't

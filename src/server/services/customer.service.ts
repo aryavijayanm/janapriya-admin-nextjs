@@ -4,6 +4,12 @@ import { Prisma, type Customer, type Role } from "@prisma/client";
 import type { Db } from "@/server/db/client";
 import { escapeLike } from "@/server/db/like";
 import { paginate, type PaginatedResult } from "@/server/db/paginate";
+import {
+    ADDRESS_SIMILARITY_THRESHOLD,
+    MAX_DUPLICATES_SHOWN,
+    lastTenDigits,
+    similarityPercent,
+} from "@/server/domain/duplicates";
 import { NotFoundError } from "@/server/domain/errors";
 import { ALL_ROLES, assertRole, type AuthUser } from "@/server/services/authz";
 import {
@@ -20,15 +26,8 @@ import {
  */
 const CUSTOMER_MODULE_ROLES: Role[] = [...ALL_ROLES];
 
-/**
- * How similar (0 to 1) an address must be to an existing customer's to show
- * the "possible duplicate" warning. Chosen as 0.6 after testing pg_trgm on
- * real-style Kerala addresses: it catches the same house typed differently
- * (pincode added, "House" vs "Veedu") at the cost of a few false alarms --
- * acceptable, since it's only a warning with "Save anyway".
- */
-const ADDRESS_SIMILARITY_THRESHOLD = 0.6;
-const MAX_DUPLICATES_SHOWN = 5;
+// The duplicate rules (60% address threshold, last-10-digit phones) live in
+// server/domain/duplicates.ts, shared with the staff check.
 
 /** An existing customer who might be the same person as the one being saved. */
 export interface PossibleDuplicate {
@@ -56,11 +55,6 @@ export type SaveCustomerResult =
 // P2025 = the record to update wasn't found.
 function isPrismaError(error: unknown, code: "P2025"): boolean {
     return error instanceof Prisma.PrismaClientKnownRequestError && error.code === code;
-}
-
-/** "+91 98765-43210" -> "9876543210". The same rule is applied in SQL below. */
-function lastTenDigits(phone: string): string {
-    return phone.replace(/\D/g, "").slice(-10);
 }
 
 /**
@@ -112,7 +106,7 @@ async function findPossibleDuplicates(
         address: row.address,
         phoneMatch: row.phoneMatch,
         addressMatch: row.score >= ADDRESS_SIMILARITY_THRESHOLD,
-        addressScore: Math.trunc(row.score * 100),
+        addressScore: similarityPercent(row.score),
     }));
 }
 

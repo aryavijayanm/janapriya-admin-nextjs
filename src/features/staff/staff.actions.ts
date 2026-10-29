@@ -14,12 +14,37 @@ import {
     type ActionFailure,
     type ActionResult,
 } from "@/app/_lib/action-result";
-import { createStaff, setStaffStatus, updateStaff } from "@/server/services/staff.service";
+import {
+    createStaff,
+    setStaffStatus,
+    updateStaff,
+    type PossibleDuplicateStaff,
+    type SaveStaffResult,
+} from "@/server/services/staff.service";
 import type { PhotoUpload } from "@/server/services/staff-photo";
 import { staffIdSchema, staffSchema, staffStatusSchema } from "@/server/validators/staff";
 
-/** Staff saves return the id, so the form can go to that person's details page. */
-export type StaffSaveResult = { ok: true; id: number } | ActionFailure;
+/**
+ * Three outcomes (same as customers):
+ *   { ok: true, id }          saved -- go to that person's details page
+ *   { ok: false, error }      something wrong -- show the message
+ *   { ok: false, duplicates } NOT saved yet -- show the warning, let the user decide
+ */
+export type StaffSaveResult =
+    | { ok: true; id: number }
+    | ActionFailure
+    | { ok: false; duplicates: PossibleDuplicateStaff[] };
+
+/** "Continue anyway" on the duplicate warning: the form sends confirmDuplicate=true. */
+function readConfirmDuplicate(formData: FormData): boolean {
+    return formData.get("confirmDuplicate") === "true";
+}
+
+function toSaveResult(result: SaveStaffResult): StaffSaveResult {
+    return result.kind === "possibleDuplicates"
+        ? { ok: false, duplicates: result.duplicates }
+        : { ok: true, id: result.staff.id };
+}
 
 /** The form's text fields arrive as one JSON string inside the FormData. */
 function parseStaffData(formData: FormData) {
@@ -45,16 +70,18 @@ export async function createStaffAction(formData: FormData): Promise<StaffSaveRe
     const parsed = parseStaffData(formData);
     if (!parsed.success) return invalidInput(parsed.error);
 
-    let id: number;
+    let result: SaveStaffResult;
     try {
-        const staff = await createStaff(db, user, parsed.data, await readPhoto(formData));
-        id = staff.id;
+        result = await createStaff(db, user, parsed.data, await readPhoto(formData), {
+            confirmDuplicate: readConfirmDuplicate(formData),
+        });
     } catch (error) {
         return toActionError(error);
     }
 
-    revalidatePath("/staff");
-    return { ok: true, id };
+    // Only refresh when something was actually saved.
+    if (result.kind === "saved") revalidatePath("/staff");
+    return toSaveResult(result);
 }
 
 export async function updateStaffAction(staffId: unknown, formData: FormData): Promise<StaffSaveResult> {
@@ -65,20 +92,27 @@ export async function updateStaffAction(staffId: unknown, formData: FormData): P
     const parsed = parseStaffData(formData);
     if (!parsed.success) return invalidInput(parsed.error);
 
+    let result: SaveStaffResult;
     try {
-        await updateStaff(db, user, parsedId.data, parsed.data, {
-            upload: await readPhoto(formData),
-            remove: formData.get("removePhoto") === "true",
-        });
+        result = await updateStaff(
+            db,
+            user,
+            parsedId.data,
+            parsed.data,
+            { upload: await readPhoto(formData), remove: formData.get("removePhoto") === "true" },
+            { confirmDuplicate: readConfirmDuplicate(formData) },
+        );
     } catch (error) {
         return toActionError(error);
     }
 
-    // The list and this person's details page both show this record, so both
-    // are refreshed. (The edit page reads fresh data each time it's opened.)
-    revalidatePath("/staff");
-    revalidatePath(`/staff/${parsedId.data}`);
-    return { ok: true, id: parsedId.data };
+    if (result.kind === "saved") {
+        // The list and this person's details page both show this record, so
+        // both are refreshed. (The edit page reads fresh data each time.)
+        revalidatePath("/staff");
+        revalidatePath(`/staff/${parsedId.data}`);
+    }
+    return toSaveResult(result);
 }
 
 export async function setStaffStatusAction(staffId: unknown, status: unknown): Promise<ActionResult> {

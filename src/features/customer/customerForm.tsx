@@ -2,13 +2,12 @@
 
 import React, { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { AlertTriangle, ExternalLink } from "lucide-react";
 import { Input } from "@/components/ui/Input";
 import { TextArea } from "@/components/ui/TextArea";
 import { FormField } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
-import { Modal } from "@/components/ui/Modal";
+import { PossibleDuplicatesModal } from "@/components/ui/PossibleDuplicatesModal";
 import { createCustomerAction, updateCustomerAction } from "@/features/customer/customer.actions";
 import { customerSchema, formatCustomerCode } from "@/server/validators/customer";
 import type { PossibleDuplicate } from "@/server/services/customer.service";
@@ -228,63 +227,28 @@ export default function CustomerForm({ customer }: CustomerFormProps) {
                     </Button>
                 </div>
 
-                {/* Possible-duplicate warning, as a modal so it can't be missed.
-                    Nothing has been saved yet. Closing it (X, clicking outside,
-                    Cancel) just returns to the form -- except while "Save anyway"
-                    is in progress, when it stays open until the save finishes. */}
-                <Modal
-                    isOpen={!!duplicates}
-                    onClose={() => {
-                        if (!isSubmitting) setDuplicates(null);
-                    }}
+                {/* Possible-duplicate warning (shared with the staff form). */}
+                <PossibleDuplicatesModal
+                    matches={
+                        duplicates?.map((d) => ({
+                            id: d.id,
+                            href: `/customer/${d.id}`,
+                            code: formatCustomerCode(d.id),
+                            name: d.name,
+                            reasons: [
+                                ...(d.phoneMatch ? ["Same phone"] : []),
+                                ...(d.addressMatch ? [`Address ${d.addressScore}% similar`] : []),
+                            ],
+                            detail: d.address,
+                        })) ?? null
+                    }
                     title="Possible duplicate customer"
-                    size="md"
-                >
-                    <div className="space-y-4">
-                        <p className="flex items-start gap-2 font-semibold text-amber-800">
-                            <AlertTriangle className="w-5 h-5 shrink-0 mt-0.5" />
-                            This might be a customer who is already registered. Check before saving.
-                        </p>
-                        <ul className="space-y-2">
-                            {/* "?? []": the list is built even while the modal is
-                                closed, when duplicates is null. */}
-                            {(duplicates ?? []).map((d) => (
-                                <li key={d.id} className="rounded-lg bg-white border border-amber-200 p-3 text-sm">
-                                    <div className="flex flex-wrap items-center gap-2">
-                                        <span className="font-mono text-xs text-gray-500">{formatCustomerCode(d.id)}</span>
-                                        <span className="font-semibold text-gray-900">{d.name}</span>
-                                        {d.phoneMatch && (
-                                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">Same phone</span>
-                                        )}
-                                        {d.addressMatch && (
-                                            <span className="rounded-full bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">
-                                                Address {d.addressScore}% similar
-                                            </span>
-                                        )}
-                                        {/* New tab, so this half-filled form isn't lost. */}
-                                        <a
-                                            href={`/customer/${d.id}`}
-                                            target="_blank"
-                                            rel="noopener noreferrer"
-                                            className="ml-auto inline-flex items-center gap-1 text-primary hover:underline"
-                                        >
-                                            Open <ExternalLink className="w-3.5 h-3.5" />
-                                        </a>
-                                    </div>
-                                    <p className="mt-1 text-gray-600 wrap-break-word">{d.address}</p>
-                                </li>
-                            ))}
-                        </ul>
-                        <div className="flex flex-wrap gap-2">
-                            <Button type="button" onClick={() => void save(true, destination)} isLoading={isSubmitting}>
-                                Save anyway
-                            </Button>
-                            <Button type="button" variant="secondary" onClick={() => setDuplicates(null)} disabled={isSubmitting}>
-                                Cancel
-                            </Button>
-                        </div>
-                    </div>
-                </Modal>
+                    message="This might be a customer who is already registered. Check before saving."
+                    confirmLabel="Save anyway"
+                    isSubmitting={isSubmitting}
+                    onConfirm={() => void save(true, destination)}
+                    onCancel={() => setDuplicates(null)}
+                />
 
                 {/* Error/success feedback right after the submit button -- on a long
                     form, a message at the top would be out of sight after clicking. */}

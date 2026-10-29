@@ -2,7 +2,8 @@ import { notFound } from "next/navigation";
 import { requireUser } from "@/app/_lib/session";
 import { getOrderByCode } from "@/server/services/order.service";
 import { todayInKerala } from "@/server/domain/age";
-import { nextContractOpensOn } from "@/server/domain/contract-dates";
+import { nextContractOpensOn, notCountedDays } from "@/server/domain/contract-dates";
+import { fromIsoDate } from "@/server/domain/days";
 import { findCoverageGaps } from "@/server/domain/duty";
 import { orderCodeSchema } from "@/server/validators/order";
 import OrderDetails from "@/features/order/orderDetails";
@@ -36,5 +37,13 @@ export default async function OrderPage({ params }: { params: Params }) {
         }
         : null;
 
-    return <OrderDetails order={order} gaps={gaps} nextContract={nextContract} today={todayInKerala()} />;
+    // Leave days per contract (days not counted), keyed by contract id.
+    const today = todayInKerala();
+    const leaveDays = Object.fromEntries(
+        order.contracts.map((c) => [c.id, notCountedDays(c, fromIsoDate(today))]),
+    );
+
+    return (
+        <OrderDetails order={order} gaps={gaps} nextContract={nextContract} leaveDays={leaveDays} today={today} />
+    );
 }

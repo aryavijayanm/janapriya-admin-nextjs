@@ -32,6 +32,25 @@ export function nextContractOpensOn(latestContractEnd: Date): Date {
     return fromDayNumber(toDayNumber(latestContractEnd) - (NEXT_CONTRACT_WINDOW_DAYS - 1));
 }
 
+/**
+ * "Leave days" of one contract: calendar days inside it that were NOT served
+ * (no staff, or no-pay only) -- the same days the order page marks "not
+ * counted in the contract". Calendar days minus served days:
+ *   finished  -> start..end            (e.g. 31 days, 28 served = 3)
+ *   pending   -> start..today          (an open gap keeps growing daily)
+ * null when the contract has no dates yet.
+ */
+export function notCountedDays(
+    contract: { startDate: Date | null; endDate: Date | null; servedDays: number },
+    today: Date,
+): number | null {
+    if (contract.startDate === null) return null;
+    const start = toDayNumber(contract.startDate);
+    const last = contract.endDate !== null ? toDayNumber(contract.endDate) : toDayNumber(today);
+    if (last < start) return 0;
+    return Math.max(0, last - start + 1 - contract.servedDays);
+}
+
 /** A duty period's dates and first/last-day parts. endDate null = still working. */
 export type DutyDates = DutyDayFacts;
 
