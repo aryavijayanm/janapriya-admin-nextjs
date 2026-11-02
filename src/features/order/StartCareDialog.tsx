@@ -9,6 +9,7 @@ import { Alert } from "@/components/ui/Alert";
 import { StaffPicker, type PickedStaff } from "@/features/order/StaffPicker";
 import { DayPartSelect, RupeesInput, type DayPartValue } from "@/features/order/dutyFields";
 import { startCareAction } from "@/features/order/order.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { startCareSchema } from "@/server/validators/order";
 
 interface StartCareDialogProps {
@@ -26,12 +27,10 @@ export function StartCareDialog({ orderId, today, onClose }: StartCareDialogProp
     const [staff, setStaff] = useState<PickedStaff | null>(null);
     const [rate, setRate] = useState(Number.NaN);
     const [staffSalary, setStaffSalary] = useState(Number.NaN);
-    const [error, setError] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { run, isPending: isSubmitting, error, setError } = useServerAction();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError("");
 
         const payload = { startDate, startDayPart, staffId: staff?.id, rate, staffSalary };
         // Same schema the server uses -- instant feedback here, the real check there.
@@ -41,14 +40,8 @@ export function StartCareDialog({ orderId, today, onClose }: StartCareDialogProp
             return;
         }
 
-        setIsSubmitting(true);
-        try {
-            const result = await startCareAction(orderId, payload);
-            if (result.ok) onClose(); // the page refreshes itself with the new contract
-            else setError(result.error);
-        } finally {
-            setIsSubmitting(false);
-        }
+        const result = await run(() => startCareAction(orderId, payload));
+        if (result.ok) onClose(); // the page refreshes itself with the new contract
     };
 
     return (

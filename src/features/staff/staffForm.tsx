@@ -12,7 +12,9 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { toDateInputValue } from "@/lib/date";
 import { createStaffAction, updateStaffAction } from "@/features/staff/staff.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { STAFF_PHOTO_MAX_BYTES, STAFF_PHOTO_TYPES, staffSchema } from "@/server/validators/staff";
+import { REMARKS_MAX_LENGTH } from "@/server/validators/text";
 import { PossibleDuplicatesModal } from "@/components/ui/PossibleDuplicatesModal";
 import type { PossibleDuplicateStaff, StaffWithServices } from "@/server/services/staff.service";
 import type { ServiceOption } from "@/server/services/service.service";
@@ -92,9 +94,8 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
     const [formData, setFormData] = useState(
         staff ? formDataFromStaff(staff) : INITIAL_FORM_DATA,
     );
-    const [error, setError] = useState("");
+    const { run, isPending: isSubmitting, error, setError } = useServerAction();
     const [success, setSuccess] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
     // Possible duplicates the server found; null = no warning showing.
     const [duplicates, setDuplicates] = useState<PossibleDuplicateStaff[] | null>(null);
 
@@ -190,7 +191,6 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
 
     // confirmDuplicate = true is "Continue anyway": the server skips the check.
     const save = async (confirmDuplicate: boolean) => {
-        setError("");
         setSuccess(false);
 
         const data = {
@@ -226,35 +226,23 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
         if (removePhoto) body.set("removePhoto", "true");
         if (confirmDuplicate) body.set("confirmDuplicate", "true");
 
-        setIsSubmitting(true);
-        try {
-            const result = staff
-                ? await updateStaffAction(staff.id, body)
-                : await createStaffAction(body);
+        const result = await run(() => (staff ? updateStaffAction(staff.id, body) : createStaffAction(body)));
 
-            if (!result.ok) {
-                if ("duplicates" in result) {
-                    // Not saved yet -- open the warning and let the user decide.
-                    setDuplicates(result.duplicates);
-                } else {
-                    // Close the warning (if "Continue anyway" was what failed),
-                    // so the error below the form isn't hidden behind it.
-                    setDuplicates(null);
-                    setError(result.error);
-                }
-                return;
-            }
-            setDuplicates(null);
-            setSuccess(true);
-            // Give the user a moment to see the success message before
-            // leaving -- then land on that staff member's details page,
-            // whether this was a create or an edit.
-            redirectTimerRef.current = setTimeout(() => {
-                router.push(`/staff/${result.id}`);
-            }, 1500);
-        } finally {
-            setIsSubmitting(false);
+        if (!result.ok) {
+            // Not saved yet -- open the warning and let the user decide.
+            // Otherwise run() already shows the message; close the warning (if
+            // "Continue anyway" was what failed) so it isn't hidden behind it.
+            setDuplicates("duplicates" in result ? result.duplicates : null);
+            return;
         }
+        setDuplicates(null);
+        setSuccess(true);
+        // Give the user a moment to see the success message before
+        // leaving -- then land on that staff member's details page,
+        // whether this was a create or an edit.
+        redirectTimerRef.current = setTimeout(() => {
+            router.push(`/staff/${result.id}`);
+        }, 1500);
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -520,6 +508,7 @@ export default function StaffForm({ staff, services, photoUrl }: StaffFormProps)
                 <FormField label="Remarks" htmlFor="remarks">
                     <TextArea
                         id="remarks"
+                        maxLength={REMARKS_MAX_LENGTH}
                         name="remarks"
                         value={formData.remarks}
                         onChange={handleChange}

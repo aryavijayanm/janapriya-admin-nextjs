@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { NOTE_MAX_LENGTH, REMARKS_MAX_LENGTH, limitedText } from "./text";
 
 // Shared by the server (order.actions, the order pages) and the browser (the
 // order forms and dialogs), so both enforce the same rules. No @prisma/client
@@ -27,18 +28,26 @@ export const orderCodeSchema = z
 const id = z.number().int().positive();
 
 // <input type="date"> always sends yyyy-mm-dd, whatever the screen shows.
-const dateField = (label: string) => z.iso.date({ error: `${label} is not a valid date` });
+export const dateField = (label: string) => z.iso.date({ error: `${label} is not a valid date` });
 
 // Required, with no default on screen: a pre-selected "Full day" would be
 // saved whenever someone forgot to change it. "" (nothing chosen) fails here.
 const dayPart = (which: string) =>
     z.enum(DAY_PARTS, { error: `Please choose Full day, Half day or No pay for the ${which}` });
 
-// Whole rupees, more than zero.
-const rupees = (label: string) =>
-    z.number({ error: `${label} is required` }).int(`${label} must be whole rupees`).positive(`${label} must be more than ₹0`);
+/** ₹1,00,00,000 -- far above any real contract, and far below what the database column can hold. */
+export const MAX_RUPEES = 10_000_000;
 
-const optionalText = z
+// Whole rupees, more than zero, at most MAX_RUPEES (a typo like an extra
+// zero row of digits gets a clear message instead of a database error).
+export const rupees = (label: string) =>
+    z
+        .number({ error: `${label} is required` })
+        .int(`${label} must be whole rupees`)
+        .positive(`${label} must be more than ₹0`)
+        .max(MAX_RUPEES, `${label} can't be more than ₹1,00,00,000`);
+
+export const optionalText = z
     .string()
     .trim()
     .transform((value) => (value === "" ? null : value));
@@ -52,7 +61,7 @@ export const orderSchema = z.object({
         .array(id)
         .min(1, "Choose at least one service")
         .transform((ids) => [...new Set(ids)]),
-    remarks: optionalText,
+    remarks: limitedText(REMARKS_MAX_LENGTH, "Remarks"),
 });
 
 // --- Start care: creates contract #1 and the first duty period ---------------
@@ -80,7 +89,7 @@ export const updateDutySchema = z.discriminatedUnion("mode", [
         mode: z.literal("stop"),
         stopDate: dateField("Stop date"),
         stopDayPart: dayPart("last day"),
-        endNote: optionalText,
+        endNote: limitedText(NOTE_MAX_LENGTH, "The note"),
         next: nextStaffSchema.nullable(),
     }),
     z.object({
@@ -100,7 +109,7 @@ export const editDutySchema = z
         startDayPart: dayPart("first day"),
         endDate: dateField("End date").nullable(),
         endDayPart: dayPart("last day").nullable(),
-        endNote: optionalText,
+        endNote: limitedText(NOTE_MAX_LENGTH, "The note"),
     })
     .refine((d) => d.endDate === null || d.endDate >= d.startDate, {
         message: "End date can't be before the start date",

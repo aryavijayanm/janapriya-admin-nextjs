@@ -27,6 +27,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/ui/Alert";
 import { calculateAge, formatDate } from "@/lib/date";
 import { setStaffStatusAction } from "@/features/staff/staff.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import type { StaffWithServices } from "@/server/services/staff.service";
 
 interface StaffDetailsProps {
@@ -93,42 +94,28 @@ const STATUS_STYLES = {
 export default function StaffDetails({ staff, photoUrl }: StaffDetailsProps) {
     const router = useRouter();
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [isToggling, setIsToggling] = useState(false);
-    const [error, setError] = useState("");
+    // Two buttons, two separate spinners -> two instances of the same hook.
+    const toggle = useServerAction();
+    const removal = useServerAction();
+    const isToggling = toggle.isPending;
+    const isDeleting = removal.isPending;
+    const error = toggle.error || removal.error;
 
     const handleToggleStatus = async () => {
-        setIsToggling(true);
-        setError("");
-        try {
-            // No local setStaff(updated) as before: the action revalidates this
-            // page, so the fresh record arrives as new props from the server.
-            const result = await setStaffStatusAction(
-                staff.id,
-                staff.status === "ACTIVE" ? "DISABLED" : "ACTIVE",
-            );
-            if (!result.ok) setError(result.error);
-        } finally {
-            setIsToggling(false);
-        }
+        // No local setStaff(updated) as before: the action revalidates this
+        // page, so the fresh record arrives as new props from the server.
+        await toggle.run(() => setStaffStatusAction(staff.id, staff.status === "ACTIVE" ? "DISABLED" : "ACTIVE"));
     };
 
     const handleDelete = async () => {
-        setIsDeleting(true);
-        setError("");
-        try {
-            // Soft delete -- the row stays (see getStaff's comment on why),
-            // it just stops showing up in the staff list.
-            const result = await setStaffStatusAction(staff.id, "DELETED");
-            if (!result.ok) {
-                setError(result.error);
-                setDeleteModalOpen(false);
-                return;
-            }
-            router.push("/staff");
-        } finally {
-            setIsDeleting(false);
+        // Soft delete -- the row stays (see getStaff's comment on why),
+        // it just stops showing up in the staff list.
+        const result = await removal.run(() => setStaffStatusAction(staff.id, "DELETED"));
+        if (!result.ok) {
+            setDeleteModalOpen(false); // so the message on the page isn't hidden behind it
+            return;
         }
+        router.push("/staff");
     };
 
     const isDeleted = staff.status === "DELETED";

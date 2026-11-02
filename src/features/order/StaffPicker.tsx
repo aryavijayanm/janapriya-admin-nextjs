@@ -7,6 +7,7 @@ import { Spinner } from "@/components/ui/Spinner";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { formatDate } from "@/lib/date";
 import { searchAssignableStaffAction } from "@/features/order/order.actions";
+import { NETWORK_ERROR_MESSAGE } from "@/hooks/useServerAction";
 import type { AssignableStaff } from "@/server/services/order.service";
 
 export interface PickedStaff {
@@ -50,14 +51,19 @@ export function StaffPicker({ orderId, onDate, value, onChange }: StaffPickerPro
             onDate,
             includeAll,
             search: debouncedQuery || undefined,
-        }).then((result) => {
-            if (!current) return; // a newer request replaced this one
-            setReply(
-                result.ok
-                    ? { key, staff: result.staff, error: "" }
-                    : { key, staff: [], error: result.error },
-            );
-        });
+        })
+            .then((result) => {
+                if (!current) return; // a newer request replaced this one
+                setReply(
+                    result.ok
+                        ? { key, staff: result.staff, error: "" }
+                        : { key, staff: [], error: result.error },
+                );
+            })
+            // The request never arrived (no internet, server down): same message as every form.
+            .catch(() => {
+                if (current) setReply({ key, staff: [], error: NETWORK_ERROR_MESSAGE });
+            });
         return () => {
             current = false;
         };

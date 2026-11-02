@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { REMARKS_MAX_LENGTH, limitedText } from "./text";
 
 // Shared by the server (customer.actions, the list page) and the browser
 // (customerForm, customerTable), so both enforce the same rules. No
@@ -66,7 +67,7 @@ export const customerSchema = z.object({
     idProof: optionalText,
     idNumber: optionalText,
     address: requiredText("Address is required"),
-    remarks: optionalText,
+    remarks: limitedText(REMARKS_MAX_LENGTH, "Remarks"),
 });
 
 // --- Everything else that arrives from the browser ------------------------

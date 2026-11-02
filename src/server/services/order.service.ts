@@ -12,6 +12,8 @@ import {
     nextContractOpensOn,
 } from "@/server/domain/contract-dates";
 import { formatDayMonthYear, fromDayNumber, fromIsoDate, toDayNumber } from "@/server/domain/days";
+import { calculatePaymentStatus } from "@/server/domain/payments";
+import { formatRupees } from "@/lib/money";
 import { dutyPeriodsClash, type DutyPeriodFacts } from "@/server/domain/duty";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/server/domain/errors";
 import { ALL_ROLES, assertRole, type AuthUser } from "@/server/services/authz";
@@ -98,7 +100,7 @@ function statusOf(order: { endDate: Date | null; contracts: unknown[] }): OrderS
 }
 
 /** A visible, not-ended order (or an error), with what write operations check. */
-async function getVisibleOrderForUpdate(tx: Tx, user: AuthUser, orderId: number) {
+export async function getVisibleOrderForUpdate(tx: Tx, user: AuthUser, orderId: number) {
     const order = await tx.customerOrder.findFirst({
         where: { AND: [{ id: orderId }, visibleOrders(user)] },
         select: { id: true, code: true, branch: true, endDate: true, _count: { select: { contracts: true } } },
@@ -227,7 +229,14 @@ const ORDER_DETAILS_INCLUDE = {
     contracts: {
         orderBy: { contractNumber: "asc" },
         // Who confirmed the rate -- shown when hovering the rate.
-        include: { rateCheckedBy: { select: { name: true } } },
+        include: {
+            rateCheckedBy: { select: { name: true } },
+            // Newest first, for the contract's payment history.
+            payments: {
+                orderBy: [{ paidOn: "desc" }, { id: "desc" }],
+                include: { recordedBy: { select: { name: true } }, voidedBy: { select: { name: true } } },
+            },
+        },
     },
     duties: {
         orderBy: [{ startDate: "asc" }, { id: "asc" }],
@@ -633,7 +642,13 @@ export async function startNextContract(
     });
 }
 
-/** Edits a contract's rate and staff salary (freely in step 1; step 2 adds the paid lock). */
+/**
+ * Edits a contract's rate and staff salary (the fully-paid lock comes in a
+ * later slice). The rate can't go below what the customer has already paid
+ * on it -- that would leave money paid beyond the contract. Raising it is
+ * always fine (it just makes more due). The paid status is recalculated,
+ * since a new rate can change it.
+ */
 export async function updateContractMoney(
     db: Db,
     user: AuthUser,
@@ -643,16 +658,64 @@ export async function updateContractMoney(
     assertRole(user, ORDER_MODULE_ROLES);
 
     return db.$transaction(async (tx) => {
-        const contract = await tx.contract.findUnique({ where: { id: contractId }, select: { orderId: true } });
+        const contract = await tx.contract.findUnique({
+            where: { id: contractId },
+            select: { orderId: true, contractNumber: true },
+        });
         if (!contract) throw new NotFoundError("Contract not found");
         const order = await getVisibleOrderForUpdate(tx, user, contract.orderId);
+
+        // Locked, so a payment recorded at this same moment can't slip in between.
+        const paidAmount = await lockContractAndGetPaid(tx, contractId);
+        if (input.rate < paidAmount) {
+            throw new ValidationError(
+                `${formatRupees(paidAmount)} is already paid on #${contract.contractNumber}, so the rate can't be lower. ` +
+                    "Void a payment first if it was recorded wrongly.",
+            );
+        }
 
         await tx.contract.update({
             where: { id: contractId },
             // Saving the money is also confirming it: clears "check rate".
             data: { rate: input.rate, staffSalary: input.staffSalary, rateCheckedAt: new Date(), rateCheckedById: user.id },
         });
+        await recalculatePaymentStatus(tx, contractId);
         return { code: order.code };
+    });
+}
+
+// ---------------------------------------------------------------------------
+// Paid status (shared with payment.service)
+// ---------------------------------------------------------------------------
+
+/**
+ * Locks the contract row until the transaction ends (SELECT ... FOR UPDATE),
+ * then returns what's paid on it. Two people saving payments -- or a payment
+ * and a rate change -- for the same contract at the same moment then run one
+ * after the other, so neither can push it past its rate.
+ */
+export async function lockContractAndGetPaid(tx: Tx, contractId: number): Promise<number> {
+    const rows = await tx.$queryRaw<{ paidAmount: number }[]>`
+        SELECT "paidAmount" FROM "Contract" WHERE id = ${contractId} FOR UPDATE
+    `;
+    if (rows.length === 0) throw new NotFoundError("Contract not found");
+    return rows[0].paidAmount;
+}
+
+/**
+ * Recalculates and stores a contract's paymentStatus, paidAmount and
+ * fullyPaidOn from its payments, using the pure rule in domain/payments.
+ * Runs inside the same transaction as every payment and rate change.
+ */
+export async function recalculatePaymentStatus(tx: Tx, contractId: number): Promise<void> {
+    const contract = await tx.contract.findUniqueOrThrow({
+        where: { id: contractId },
+        select: { rate: true, payments: { select: { id: true, amount: true, paidOn: true, voidedAt: true } } },
+    });
+    const { status, paidAmount, fullyPaidOn } = calculatePaymentStatus(contract.rate, contract.payments);
+    await tx.contract.update({
+        where: { id: contractId },
+        data: { paymentStatus: status, paidAmount, fullyPaidOn },
     });
 }
 
@@ -796,6 +859,14 @@ export async function deleteLatestContract(db: Db, user: AuthUser, contractId: n
         if (contract.servedDays > 0) {
             throw new ValidationError(
                 `Contract #${contract.contractNumber} already has ${contract.servedDays} served days, so it can't be deleted`,
+            );
+        }
+        // Any payment -- even a voided one, which is money history too -- keeps
+        // the contract. (The database refuses it as well.)
+        const payments = await tx.payment.count({ where: { contractId } });
+        if (payments > 0) {
+            throw new ValidationError(
+                `Contract #${contract.contractNumber} has payments recorded, so it can't be deleted`,
             );
         }
 

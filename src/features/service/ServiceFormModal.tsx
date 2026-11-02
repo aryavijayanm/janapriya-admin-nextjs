@@ -7,6 +7,7 @@ import { FormField } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { createServiceAction, updateServiceAction } from "@/features/service/service.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { serviceSchema } from "@/server/validators/service";
 import type { Service } from "@prisma/client";
 
@@ -21,12 +22,10 @@ export function ServiceFormModal({ service, onClose }: ServiceFormModalProps) {
     const isEditing = !!service;
     const [name, setName] = useState(service?.name ?? "");
     const [abbreviation, setAbbreviation] = useState(service?.abbreviation ?? "");
-    const [error, setError] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { run, isPending: isSubmitting, error, setError } = useServerAction();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError("");
 
         // Same schema the server uses -- replaces the old hand-written
         // "Service name is required." / "Abbreviation is required." checks.
@@ -37,20 +36,10 @@ export function ServiceFormModal({ service, onClose }: ServiceFormModalProps) {
             return;
         }
 
-        setIsSubmitting(true);
-        try {
-            const result = isEditing
-                ? await updateServiceAction(service.id, payload)
-                : await createServiceAction(payload);
-
-            if (result.ok) {
-                onClose();
-            } else {
-                setError(result.error);
-            }
-        } finally {
-            setIsSubmitting(false);
-        }
+        const result = await run(() =>
+            isEditing ? updateServiceAction(service.id, payload) : createServiceAction(payload),
+        );
+        if (result.ok) onClose();
     };
 
     return (

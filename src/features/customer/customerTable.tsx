@@ -10,6 +10,7 @@ import type { TableColumn } from "@/components/ui/Table";
 import { usePagination } from "@/hooks/usePagination";
 import { useSort } from "@/hooks/useSort";
 import { setCustomerStatusAction } from "@/features/customer/customer.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { formatCustomerCode } from "@/server/validators/customer";
 import type { PaginatedResult } from "@/server/db/paginate";
 import type { Customer } from "@prisma/client";
@@ -29,17 +30,12 @@ export default function CustomerTable({ customers, pagination }: CustomerTablePr
     const { sortBy, sortDir, toggleSort } = useSort();
     // Which row's Enable/Disable is in flight, so only that button spins.
     const [togglingId, setTogglingId] = useState<number | null>(null);
-    const [error, setError] = useState("");
+    const { run, error } = useServerAction();
 
     const handleToggleStatus = async (c: Customer) => {
         setTogglingId(c.id);
-        setError("");
-        try {
-            const result = await setCustomerStatusAction(c.id, c.status === "ACTIVE" ? "DISABLED" : "ACTIVE");
-            if (!result.ok) setError(result.error);
-        } finally {
-            setTogglingId(null);
-        }
+        await run(() => setCustomerStatusAction(c.id, c.status === "ACTIVE" ? "DISABLED" : "ACTIVE")); // a refusal shows as `error`
+        setTogglingId(null);
     };
 
     const columns: TableColumn<Customer>[] = [

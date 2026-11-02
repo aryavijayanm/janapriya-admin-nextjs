@@ -5,6 +5,7 @@ import { Search, UserRound } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Spinner } from "@/components/ui/Spinner";
 import { searchActiveCustomersAction } from "@/features/customer/customer.actions";
+import { NETWORK_ERROR_MESSAGE } from "@/hooks/useServerAction";
 import { formatCustomerCode } from "@/server/validators/customer";
 import type { CustomerOption } from "@/server/services/customer.service";
 
@@ -43,7 +44,11 @@ export function CustomerPicker({ value, onChange, readOnly = false }: CustomerPi
         const searchNumber = ++latestSearchRef.current;
         setIsSearching(true);
         setError("");
-        const result = await searchActiveCustomersAction(text);
+        const result = await searchActiveCustomersAction(text).catch(() => ({
+            // The request never arrived (no internet, server down): same message as every form.
+            ok: false as const,
+            error: NETWORK_ERROR_MESSAGE,
+        }));
         if (searchNumber !== latestSearchRef.current) return; // a newer search has started
         setIsSearching(false);
         setSearched(true);

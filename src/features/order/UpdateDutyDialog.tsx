@@ -11,7 +11,9 @@ import { Alert } from "@/components/ui/Alert";
 import { StaffPicker, type PickedStaff } from "@/features/order/StaffPicker";
 import { DayPartSelect, type DayPartValue } from "@/features/order/dutyFields";
 import { updateDutyAction } from "@/features/order/order.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { updateDutySchema } from "@/server/validators/order";
+import { NOTE_MAX_LENGTH } from "@/server/validators/text";
 
 interface UpdateDutyDialogProps {
     orderId: number;
@@ -48,8 +50,7 @@ export function UpdateDutyDialog({ orderId, onDutyStaffName, today, onClose }: U
     const [startDate, setStartDate] = useState(today);
     const [startDayPart, setStartDayPart] = useState<DayPartValue | "">("");
 
-    const [error, setError] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { run, isPending: isSubmitting, error, setError } = useServerAction();
 
     // Ticking "someone takes over" suggests the next start DATE -- never after
     // today (duty is entered once it has happened): the day after a full last
@@ -68,7 +69,6 @@ export function UpdateDutyDialog({ orderId, onDutyStaffName, today, onClose }: U
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError("");
 
         const starting = { staffId: staff?.id, startDate, startDayPart };
         const payload =
@@ -82,14 +82,8 @@ export function UpdateDutyDialog({ orderId, onDutyStaffName, today, onClose }: U
             return;
         }
 
-        setIsSubmitting(true);
-        try {
-            const result = await updateDutyAction(orderId, payload);
-            if (result.ok) onClose();
-            else setError(result.error);
-        } finally {
-            setIsSubmitting(false);
-        }
+        const result = await run(() => updateDutyAction(orderId, payload));
+        if (result.ok) onClose();
     };
 
     const startingFields = (
@@ -147,6 +141,7 @@ export function UpdateDutyDialog({ orderId, onDutyStaffName, today, onClose }: U
                         <FormField label="Note (optional)" htmlFor="end-note">
                             <TextArea
                                 id="end-note"
+                                maxLength={NOTE_MAX_LENGTH}
                                 rows={2}
                                 value={endNote}
                                 onChange={(e) => setEndNote(e.target.value)}

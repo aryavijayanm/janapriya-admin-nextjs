@@ -41,6 +41,8 @@ export function LoginForm() {
                             src="/images/logo.png"
                             alt="Janapriya Logo"
                             fill
+                            // The box is w-72 (288px): tells the browser which image size to fetch.
+                            sizes="288px"
                             className="object-contain"
                             priority
                         />

@@ -22,6 +22,7 @@ import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/ui/Alert";
 import { formatDate } from "@/lib/date";
 import { setCustomerStatusAction } from "@/features/customer/customer.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { formatCustomerCode } from "@/server/validators/customer";
 import type { Customer } from "@prisma/client";
 import type { OrderListItem } from "@/server/services/order.service";
@@ -83,41 +84,29 @@ function PhoneLink({ number }: { number: string }) {
 export default function CustomerDetails({ customer, orders }: { customer: Customer; orders: OrderListItem[] }) {
     const router = useRouter();
     const [deleteModalOpen, setDeleteModalOpen] = useState(false);
-    const [isDeleting, setIsDeleting] = useState(false);
-    const [isToggling, setIsToggling] = useState(false);
-    const [error, setError] = useState("");
+    // Two buttons, two separate spinners -> two instances of the same hook.
+    const toggle = useServerAction();
+    const removal = useServerAction();
+    const isToggling = toggle.isPending;
+    const isDeleting = removal.isPending;
+    const error = toggle.error || removal.error;
 
     const handleToggleStatus = async () => {
-        setIsToggling(true);
-        setError("");
-        try {
-            // The action revalidates this page, so the fresh record arrives as new props.
-            const result = await setCustomerStatusAction(
-                customer.id,
-                customer.status === "ACTIVE" ? "DISABLED" : "ACTIVE",
-            );
-            if (!result.ok) setError(result.error);
-        } finally {
-            setIsToggling(false);
-        }
+        // The action revalidates this page, so the fresh record arrives as new props.
+        await toggle.run(() =>
+            setCustomerStatusAction(customer.id, customer.status === "ACTIVE" ? "DISABLED" : "ACTIVE"),
+        );
     };
 
     const handleDelete = async () => {
-        setIsDeleting(true);
-        setError("");
-        try {
-            // Soft delete -- the row stays, so future orders and payments
-            // that reference this customer keep resolving.
-            const result = await setCustomerStatusAction(customer.id, "DELETED");
-            if (!result.ok) {
-                setError(result.error);
-                setDeleteModalOpen(false);
-                return;
-            }
-            router.push("/customer");
-        } finally {
-            setIsDeleting(false);
+        // Soft delete -- the row stays, so future orders and payments
+        // that reference this customer keep resolving.
+        const result = await removal.run(() => setCustomerStatusAction(customer.id, "DELETED"));
+        if (!result.ok) {
+            setDeleteModalOpen(false); // so the message on the page isn't hidden behind it
+            return;
         }
+        router.push("/customer");
     };
 
     const isDeleted = customer.status === "DELETED";

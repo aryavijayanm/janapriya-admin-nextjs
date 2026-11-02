@@ -32,6 +32,8 @@ import {
     startCareSchema,
     updateDutySchema,
 } from "@/server/validators/order";
+import { recordPayment, voidPayment } from "@/server/services/payment.service";
+import { paymentIdSchema, paymentSchema, voidPaymentSchema } from "@/server/validators/payment";
 
 /** Every order save returns the order's code, so the screen can show /orders/<code>. */
 export type OrderSaveResult = { ok: true; code: string } | ActionFailure;
@@ -126,6 +128,26 @@ export async function updateContractMoneyAction(contractId: unknown, input: unkn
     const parsed = contractMoneySchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
     return save(() => updateContractMoney(db, user, id.data, parsed.data));
+}
+
+// --- Payments (rules in payment.service) ------------------------------------
+
+export async function recordPaymentAction(contractId: unknown, input: unknown): Promise<OrderSaveResult> {
+    const { db, user } = await requireUser();
+    const id = contractIdSchema.safeParse(contractId);
+    if (!id.success) return invalidInput(id.error);
+    const parsed = paymentSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    return save(() => recordPayment(db, user, id.data, parsed.data));
+}
+
+export async function voidPaymentAction(paymentId: unknown, input: unknown): Promise<OrderSaveResult> {
+    const { db, user } = await requireUser();
+    const id = paymentIdSchema.safeParse(paymentId);
+    if (!id.success) return invalidInput(id.error);
+    const parsed = voidPaymentSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    return save(() => voidPayment(db, user, id.data, parsed.data.reason));
 }
 
 /** "Rate is correct" on an auto-started contract. */

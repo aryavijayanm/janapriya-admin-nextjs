@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { REMARKS_MAX_LENGTH, limitedText } from "./text";
 
 // Replaces the old create-staff.dto.ts / update-staff.dto.ts / find-staff.dto.ts.
 // Shared by the server (staff.actions, the list page) and the browser
@@ -58,7 +59,7 @@ export const staffSchema = z.object({
     idNumber: optionalText,
     bankAccountDetails: optionalText,
     rating: z.number().int().min(0).max(10),
-    remarks: optionalText,
+    remarks: limitedText(REMARKS_MAX_LENGTH, "Remarks"),
     // De-duplicated, so a repeated id can't create two links.
     serviceIds: z
         .array(z.number().int().positive())

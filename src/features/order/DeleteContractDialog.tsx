@@ -1,10 +1,10 @@
 "use client";
 
-import { useState } from "react";
 import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { deleteContractAction } from "@/features/order/order.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 
 interface DeleteContractDialogProps {
     contractId: number;
@@ -16,19 +16,11 @@ interface DeleteContractDialogProps {
 // only offers it for the latest contract (not #1) with 0 served days; the
 // server checks the same rules again before deleting.
 export function DeleteContractDialog({ contractId, contractNumber, onClose }: DeleteContractDialogProps) {
-    const [error, setError] = useState("");
-    const [isDeleting, setIsDeleting] = useState(false);
+    const { run, isPending: isDeleting, error } = useServerAction();
 
     const handleDelete = async () => {
-        setError("");
-        setIsDeleting(true);
-        try {
-            const result = await deleteContractAction(contractId);
-            if (result.ok) onClose();
-            else setError(result.error);
-        } finally {
-            setIsDeleting(false);
-        }
+        const result = await run(() => deleteContractAction(contractId));
+        if (result.ok) onClose();
     };
 
     return (

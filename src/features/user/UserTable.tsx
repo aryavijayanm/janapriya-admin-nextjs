@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { UserFormModal } from "@/features/user/UserFormModal";
 import { setUserActiveAction } from "@/features/user/user.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import type { UserListItem } from "@/server/services/user.service";
 
 interface UserTableProps {
@@ -25,17 +26,12 @@ export default function UserTable({ users, currentUserId }: UserTableProps) {
     const [editingUser, setEditingUser] = useState<UserListItem | null>(null);
     // Which row's Enable/Disable is in flight, so only that button spins.
     const [togglingId, setTogglingId] = useState<number | null>(null);
-    const [error, setError] = useState("");
+    const { run, error } = useServerAction();
 
     const handleToggleActive = async (user: UserListItem) => {
         setTogglingId(user.id);
-        setError("");
-        try {
-            const result = await setUserActiveAction(user.id, !user.is_active);
-            if (!result.ok) setError(result.error);
-        } finally {
-            setTogglingId(null);
-        }
+        await run(() => setUserActiveAction(user.id, !user.is_active)); // a refusal shows as `error`
+        setTogglingId(null);
     };
 
     const handleAdd = () => {

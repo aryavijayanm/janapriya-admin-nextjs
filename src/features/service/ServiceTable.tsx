@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { ServiceFormModal } from "@/features/service/ServiceFormModal";
 import { setServiceActiveAction } from "@/features/service/service.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import type { Service } from "@prisma/client";
 
 // Same pattern as UserTable: data arrives as props from the Server Component
@@ -17,17 +18,12 @@ export default function ServiceTable({ services }: { services: Service[] }) {
     const [modalOpen, setModalOpen] = useState(false);
     const [editingService, setEditingService] = useState<Service | null>(null);
     const [togglingId, setTogglingId] = useState<number | null>(null);
-    const [error, setError] = useState("");
+    const { run, error } = useServerAction();
 
     const handleToggleActive = async (service: Service) => {
         setTogglingId(service.id);
-        setError("");
-        try {
-            const result = await setServiceActiveAction(service.id, !service.is_active);
-            if (!result.ok) setError(result.error);
-        } finally {
-            setTogglingId(null);
-        }
+        await run(() => setServiceActiveAction(service.id, !service.is_active)); // a refusal shows as `error`
+        setTogglingId(null);
     };
 
     const handleAdd = () => {

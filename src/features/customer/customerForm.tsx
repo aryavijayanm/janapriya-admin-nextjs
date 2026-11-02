@@ -9,7 +9,9 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { PossibleDuplicatesModal } from "@/components/ui/PossibleDuplicatesModal";
 import { createCustomerAction, updateCustomerAction } from "@/features/customer/customer.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { customerSchema, formatCustomerCode } from "@/server/validators/customer";
+import { REMARKS_MAX_LENGTH } from "@/server/validators/text";
 import type { PossibleDuplicate } from "@/server/services/customer.service";
 import type { Customer } from "@prisma/client";
 
@@ -56,9 +58,8 @@ export default function CustomerForm({ customer }: CustomerFormProps) {
     const isEditing = !!customer;
 
     const [form, setForm] = useState<FormData>(customer ? formFromCustomer(customer) : EMPTY_FORM);
-    const [error, setError] = useState("");
+    const { run, isPending: isSubmitting, error, setError } = useServerAction();
     const [success, setSuccess] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
     // Possible duplicates the server found; null = no warning showing.
     const [duplicates, setDuplicates] = useState<PossibleDuplicate[] | null>(null);
 
@@ -100,34 +101,26 @@ export default function CustomerForm({ customer }: CustomerFormProps) {
             return;
         }
 
-        setIsSubmitting(true);
-        try {
-            const result = customer
-                ? await updateCustomerAction(customer.id, form, confirmDuplicate)
-                : await createCustomerAction(form, confirmDuplicate);
+        const result = await run(() =>
+            customer
+                ? updateCustomerAction(customer.id, form, confirmDuplicate)
+                : createCustomerAction(form, confirmDuplicate),
+        );
 
-            if (!result.ok) {
-                if ("duplicates" in result) {
-                    // Not saved yet -- open the warning and let the user decide.
-                    setDuplicates(result.duplicates);
-                } else {
-                    // Close the warning (if "Save anyway" was what failed), so the
-                    // error below the form isn't hidden behind it.
-                    setDuplicates(null);
-                    setError(result.error);
-                }
-                return;
-            }
-
-            setDuplicates(null);
-            setSuccess(true);
-            // A moment to see the success message, then the next page.
-            redirectTimerRef.current = setTimeout(() => {
-                router.push(then === "order" ? `/orders/new?customerId=${result.id}` : `/customer/${result.id}`);
-            }, 1500);
-        } finally {
-            setIsSubmitting(false);
+        if (!result.ok) {
+            // Not saved yet -- open the warning and let the user decide.
+            // Otherwise run() already shows the message; close the warning (if
+            // "Save anyway" was what failed) so it isn't hidden behind it.
+            setDuplicates("duplicates" in result ? result.duplicates : null);
+            return;
         }
+
+        setDuplicates(null);
+        setSuccess(true);
+        // A moment to see the success message, then the next page.
+        redirectTimerRef.current = setTimeout(() => {
+            router.push(then === "order" ? `/orders/new?customerId=${result.id}` : `/customer/${result.id}`);
+        }, 1500);
     };
 
     const handleSubmit = (e: React.FormEvent) => {
@@ -199,6 +192,7 @@ export default function CustomerForm({ customer }: CustomerFormProps) {
                 <FormField label="Remarks" htmlFor="remarks">
                     <TextArea
                         id="remarks"
+                        maxLength={REMARKS_MAX_LENGTH}
                         name="remarks"
                         value={form.remarks}
                         onChange={handleChange}

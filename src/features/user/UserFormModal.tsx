@@ -8,6 +8,7 @@ import { FormField } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { createUserAction, updateUserAction } from "@/features/user/user.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { ROLES, createUserSchema, updateUserSchema } from "@/server/validators/user";
 import type { UserListItem } from "@/server/services/user.service";
 
@@ -33,8 +34,7 @@ export function UserFormModal({ user, onClose }: UserFormModalProps) {
         designation: user?.designation ?? "",
         role: "",
     });
-    const [error, setError] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { run, isPending: isSubmitting, error, setError } = useServerAction();
 
     const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
         const { name, value } = e.target;
@@ -75,20 +75,10 @@ export function UserFormModal({ user, onClose }: UserFormModalProps) {
             return;
         }
 
-        setIsSubmitting(true);
-        try {
-            const result = isEditing
-                ? await updateUserAction(user.id, payload)
-                : await createUserAction(payload);
-
-            if (result.ok) {
-                onClose();
-            } else {
-                setError(result.error);
-            }
-        } finally {
-            setIsSubmitting(false);
-        }
+        const result = await run(() =>
+            isEditing ? updateUserAction(user.id, payload) : createUserAction(payload),
+        );
+        if (result.ok) onClose();
     };
 
     return (

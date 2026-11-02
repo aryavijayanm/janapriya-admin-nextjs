@@ -11,7 +11,9 @@ import { Alert } from "@/components/ui/Alert";
 import { StaffPicker, type PickedStaff } from "@/features/order/StaffPicker";
 import { DayPartSelect, type DayPartValue } from "@/features/order/dutyFields";
 import { editDutyAction } from "@/features/order/order.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { editDutySchema } from "@/server/validators/order";
+import { NOTE_MAX_LENGTH } from "@/server/validators/text";
 
 /** One duty period as the order page has it. */
 export interface EditableDuty {
@@ -50,12 +52,10 @@ export function EditDutyDialog({ orderId, duty, today, onClose }: EditDutyDialog
     const [endDayPart, setEndDayPart] = useState<DayPartValue | "">(duty.endDayPart ?? "");
     const [endNote, setEndNote] = useState(duty.endNote ?? "");
 
-    const [error, setError] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { run, isPending: isSubmitting, error, setError } = useServerAction();
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError("");
 
         const payload = {
             staffId: staff?.id,
@@ -75,14 +75,8 @@ export function EditDutyDialog({ orderId, duty, today, onClose }: EditDutyDialog
             return;
         }
 
-        setIsSubmitting(true);
-        try {
-            const result = await editDutyAction(orderId, duty.id, payload);
-            if (result.ok) onClose();
-            else setError(result.error);
-        } finally {
-            setIsSubmitting(false);
-        }
+        const result = await run(() => editDutyAction(orderId, duty.id, payload));
+        if (result.ok) onClose();
     };
 
     return (
@@ -137,6 +131,7 @@ export function EditDutyDialog({ orderId, duty, today, onClose }: EditDutyDialog
                         <FormField label="Note (optional)" htmlFor="edit-end-note">
                             <TextArea
                                 id="edit-end-note"
+                                maxLength={NOTE_MAX_LENGTH}
                                 rows={2}
                                 value={endNote}
                                 onChange={(e) => setEndNote(e.target.value)}

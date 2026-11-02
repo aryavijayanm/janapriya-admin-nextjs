@@ -12,6 +12,7 @@ import { usePagination } from "@/hooks/usePagination";
 import { useSort } from "@/hooks/useSort";
 import { calculateAge } from "@/lib/date";
 import { setStaffStatusAction } from "@/features/staff/staff.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import type { StaffWithServices } from "@/server/services/staff.service";
 import type { PaginatedResult } from "@/server/db/paginate";
 import type { Service } from "@prisma/client";
@@ -36,7 +37,7 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
     // Tracks which row's enable/disable request is in flight, so only that
     // row's button shows a loading state instead of the whole table.
     const [togglingId, setTogglingId] = useState<number | null>(null);
-    const [error, setError] = useState("");
+    const { run, error } = useServerAction();
 
     // Filter state lives in the URL too (same bookmarkable/back-forward
     // reasoning as page and sort).
@@ -63,13 +64,8 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
 
     const handleToggleStatus = async (s: StaffWithServices) => {
         setTogglingId(s.id);
-        setError("");
-        try {
-            const result = await setStaffStatusAction(s.id, s.status === "ACTIVE" ? "DISABLED" : "ACTIVE");
-            if (!result.ok) setError(result.error);
-        } finally {
-            setTogglingId(null);
-        }
+        await run(() => setStaffStatusAction(s.id, s.status === "ACTIVE" ? "DISABLED" : "ACTIVE")); // a refusal shows as `error`
+        setTogglingId(null);
     };
 
     const columns: TableColumn<StaffWithServices>[] = [

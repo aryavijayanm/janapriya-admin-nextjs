@@ -10,7 +10,9 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { CustomerPicker } from "@/features/customer/CustomerPicker";
 import { createOrderAction, updateOrderAction } from "@/features/order/order.actions";
+import { useServerAction } from "@/hooks/useServerAction";
 import { orderSchema } from "@/server/validators/order";
+import { REMARKS_MAX_LENGTH } from "@/server/validators/text";
 import type { CustomerOption } from "@/server/services/customer.service";
 import type { ServiceOption } from "@/server/services/service.service";
 
@@ -48,9 +50,8 @@ export default function OrderForm({ order, customer: preselected, services, canC
     const [branch, setBranch] = useState<BranchValue | "">(order?.branch ?? (canChooseBranch ? "" : "KERALA"));
     const [serviceIds, setServiceIds] = useState<number[]>(order?.serviceIds ?? []);
     const [remarks, setRemarks] = useState(order?.remarks ?? "");
-    const [error, setError] = useState("");
+    const { run, isPending: isSubmitting, error, setError } = useServerAction();
     const [success, setSuccess] = useState(false);
-    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // So a navigation triggered elsewhere doesn't leave a stray redirect firing.
     const redirectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,19 +85,11 @@ export default function OrderForm({ order, customer: preselected, services, canC
             return;
         }
 
-        setIsSubmitting(true);
-        try {
-            const result = order ? await updateOrderAction(order.id, payload) : await createOrderAction(payload);
-            if (!result.ok) {
-                setError(result.error);
-                return;
-            }
-            setSuccess(true);
-            // A moment to see the success message, then the order's page.
-            redirectTimerRef.current = setTimeout(() => router.push(`/orders/${result.code}`), 1500);
-        } finally {
-            setIsSubmitting(false);
-        }
+        const result = await run(() => (order ? updateOrderAction(order.id, payload) : createOrderAction(payload)));
+        if (!result.ok) return; // run() already shows the message
+        setSuccess(true);
+        // A moment to see the success message, then the order's page.
+        redirectTimerRef.current = setTimeout(() => router.push(`/orders/${result.code}`), 1500);
     };
 
     return (
@@ -149,6 +142,7 @@ export default function OrderForm({ order, customer: preselected, services, canC
                 <FormField label="Remarks" htmlFor="remarks">
                     <TextArea
                         id="remarks"
+                        maxLength={REMARKS_MAX_LENGTH}
                         value={remarks}
                         onChange={(e) => setRemarks(e.target.value)}
                         rows={3}

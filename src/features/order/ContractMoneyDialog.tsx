@@ -13,6 +13,7 @@ import {
     updateContractMoneyAction,
 } from "@/features/order/order.actions";
 import { contractMoneySchema } from "@/server/validators/order";
+import { useServerAction } from "@/hooks/useServerAction";
 
 /** What the dialog saves to: a brand-new next contract, or an existing one. */
 export type ContractMoneyTarget =
@@ -44,27 +45,19 @@ export function ContractMoneyDialog({
 }: ContractMoneyDialogProps) {
     const [rate, setRate] = useState(initialRate);
     const [staffSalary, setStaffSalary] = useState(initialStaffSalary);
-    const [error, setError] = useState("");
-    const [isSubmitting, setIsSubmitting] = useState(false);
+    const { run, isPending: isSubmitting, error, setError } = useServerAction();
 
     const isNext = target.kind === "next";
     const title = isNext ? `Start contract #${target.nextNumber}` : `Edit contract #${target.contractNumber}`;
 
-    const run = async (action: () => ReturnType<typeof updateContractMoneyAction>) => {
-        setError("");
-        setIsSubmitting(true);
-        try {
-            const result = await action();
-            if (result.ok) onClose();
-            else setError(result.error);
-        } finally {
-            setIsSubmitting(false);
-        }
+    // Every button here ends the same way: save, then close on success.
+    const save = async (call: () => ReturnType<typeof updateContractMoneyAction>) => {
+        const result = await run(call);
+        if (result.ok) onClose();
     };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError("");
 
         const payload = { rate, staffSalary };
         const check = contractMoneySchema.safeParse(payload);
@@ -73,7 +66,7 @@ export function ContractMoneyDialog({
             return;
         }
 
-        await run(() =>
+        await save(() =>
             target.kind === "next"
                 ? startNextContractAction(target.orderId, payload)
                 : updateContractMoneyAction(target.contractId, payload),
@@ -111,7 +104,7 @@ export function ContractMoneyDialog({
                             type="button"
                             variant="success"
                             disabled={isSubmitting}
-                            onClick={() => void run(() => confirmContractRateAction(target.contractId))}
+                            onClick={() => void save(() => confirmContractRateAction(target.contractId))}
                         >
                             <CheckCircle2 className="w-4 h-4" />
                             Rate is correct

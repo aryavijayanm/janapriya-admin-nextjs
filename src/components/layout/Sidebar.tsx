@@ -30,6 +30,8 @@ export function Sidebar({ user, isOpen }: SidebarProps) {
                             src="/images/logo_black.png"
                             alt="Janapriya"
                             fill
+                            // The image box is always w-40 (160px), even when the sidebar is collapsed.
+                            sizes="160px"
                             className="object-contain object-left"
                             priority
                         />

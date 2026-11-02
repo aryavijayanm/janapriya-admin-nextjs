@@ -39,6 +39,8 @@ model User {
 
   sessions         Session[]
   checkedContracts Contract[] // contracts whose rate this user confirmed
+  recordedPayments Payment[]  @relation("PaymentRecordedBy")
+  voidedPayments   Payment[]  @relation("PaymentVoidedBy")
 }
 
 // Database-backed sessions, deliberately not JWT: deleting a row revokes
@@ -234,12 +236,61 @@ model Contract {
   rateCheckedAt   DateTime?     @db.Timestamptz
   rateCheckedById Int?
   rateCheckedBy   User?         @relation(fields: [rateCheckedById], references: [id], onDelete: SetNull)
+  // What the customer has paid. Calculated from the payments below (voided
+  // ones don't count) and stored -- recalculated in the same transaction as
+  // every payment or rate change, like servedDays.
+  paymentStatus   PaymentStatus @default(NOT_PAID)
+  paidAmount      Int           @default(0)
+  // The paidOn date of the payment that completed the rate. Null unless fully paid.
+  fullyPaidOn     DateTime?     @db.Date
+  payments        Payment[]
   createdAt       DateTime      @default(now()) @db.Timestamptz
   updatedAt       DateTime      @updatedAt @db.Timestamptz
 
   @@unique([orderId, contractNumber])
   // The nightly job looks contracts up by end date.
   @@index([endDate])
+}
+
+// How a customer's money reached us. Recording only -- no money moves through
+// the app. PAID_TO_STAFF matters for staff money later (step 3).
+enum PaymentMode {
+  CASH_OFFICE
+  CASH_OWNER
+  TO_ACCOUNT
+  PAID_TO_STAFF
+  OTHER
+}
+
+enum PaymentStatus {
+  NOT_PAID
+  PARTLY_PAID
+  FULLY_PAID
+}
+
+// One payment by a customer, against ONE contract. No orderId on purpose:
+// payment -> contract -> order is one join, and a second copy of the order
+// could disagree with the contract's. Never edited: a mistake is voided (it
+// stays, crossed out, with who/when/why) and recorded again.
+model Payment {
+  id             Int         @id @default(autoincrement())
+  contractId     Int
+  contract       Contract    @relation(fields: [contractId], references: [id])
+  amount         Int // whole rupees, more than 0
+  // The day the customer paid -- typed by the user (often recorded later).
+  paidOn         DateTime    @db.Date
+  mode           PaymentMode
+  accountDetails String? // optional, e.g. "Rama SBI"
+  recordedById   Int?
+  recordedBy     User?       @relation("PaymentRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  // Set when voided. A voided payment stops counting but is never deleted.
+  voidedAt       DateTime?   @db.Timestamptz
+  voidedById     Int?
+  voidedBy       User?       @relation("PaymentVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  voidReason     String?
+  createdAt      DateTime    @default(now()) @db.Timestamptz
+
+  @@index([contractId])
 }
 
 // One duty period: one staff member working on one order from a date, until a
