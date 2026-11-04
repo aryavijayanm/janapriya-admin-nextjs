@@ -256,14 +256,23 @@ export function StaffAccount({ account }: { account: Account }) {
                             <span className={toSettle.balance < 0 ? "text-amber-700" : ""}>{formatRupees(Math.abs(toSettle.balance))}</span>
                         </p>
                         <div className="flex flex-wrap gap-2">
-                            <Button variant="secondary" onClick={() => setDialog({ kind: "add" })}>
+                            {/* title = the browser's own tooltip, shown on hover */}
+                            <Button
+                                variant="secondary"
+                                onClick={() => setDialog({ kind: "add" })}
+                                title="To enter all advances, paid salaries, etc."
+                            >
                                 <Plus className="w-4 h-4" />
                                 Add entry
                             </Button>
                             <Button
                                 onClick={() => setDialog({ kind: "clear" })}
                                 disabled={!hasNew}
-                                title={hasNew ? undefined : "Nothing new to settle since the last clearing"}
+                                title={
+                                    hasNew
+                                        ? "Use this only when you need to clear the salary until now."
+                                        : "Nothing new to settle since the last clearing"
+                                }
                             >
                                 Clear the salary now
                             </Button>
