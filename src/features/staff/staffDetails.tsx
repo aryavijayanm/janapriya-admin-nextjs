@@ -282,7 +282,7 @@ export default function StaffDetails({ staff, photoUrl }: StaffDetailsProps) {
                     <Power className="w-4 h-4" />
                     {staff.status === "ACTIVE" ? "Disable" : "Enable"}
                 </Button>
-                <Button variant="secondary" disabled title="Coming soon">
+                <Button variant="secondary" onClick={() => router.push(`/staff/${staff.id}/account`)}>
                     <Wallet className="w-4 h-4" />
                     View Account
                 </Button>

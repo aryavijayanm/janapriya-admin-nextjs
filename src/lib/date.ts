@@ -44,6 +44,21 @@ export function formatDateTime(value: string | Date): string {
     return `${formatDate(date)}, ${time}`;
 }
 
+/**
+ * Reads a typed DD/MM/YYYY date ("05/11/2026") into yyyy-mm-dd ("2026-11-05"),
+ * the form the schemas and the server expect. null if it isn't a real date
+ * (31/02/2026, 5/11/26, empty...). Used by DateTextInput forms.
+ */
+export function parseDayMonthYear(text: string): string | null {
+    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text.trim());
+    if (!match) return null;
+    const [, dd, mm, yyyy] = match;
+    const iso = `${yyyy}-${mm}-${dd}`;
+    // Round-trip through a UTC date: an impossible day (31/02) comes back different.
+    const date = new Date(`${iso}T00:00:00.000Z`);
+    return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === iso ? iso : null;
+}
+
 // yyyy-mm-dd, the only format <input type="date"> accepts as its value --
 // "en-CA" is just the locale that happens to format dates that way.
 export function toDateInputValue(value: string | Date): string {

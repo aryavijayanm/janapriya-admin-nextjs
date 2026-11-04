@@ -37,10 +37,13 @@ model User {
   updated_at    DateTime  @updatedAt @db.Timestamptz
   last_login_at DateTime? @db.Timestamptz
 
-  sessions         Session[]
-  checkedContracts Contract[] // contracts whose rate this user confirmed
-  recordedPayments Payment[]  @relation("PaymentRecordedBy")
-  voidedPayments   Payment[]  @relation("PaymentVoidedBy")
+  sessions             Session[]
+  checkedContracts     Contract[] // contracts whose rate this user confirmed
+  recordedPayments     Payment[]           @relation("PaymentRecordedBy")
+  voidedPayments       Payment[]           @relation("PaymentVoidedBy")
+  recordedStaffEntries StaffAccountEntry[] @relation("StaffEntryRecordedBy")
+  voidedStaffEntries   StaffAccountEntry[] @relation("StaffEntryVoidedBy")
+  staffSettlements     StaffSettlement[]
 }
 
 // Database-backed sessions, deliberately not JWT: deleting a row revokes
@@ -98,8 +101,10 @@ model Staff {
   created_at               DateTime    @default(now()) @db.Timestamptz
   updated_at               DateTime    @updatedAt @db.Timestamptz
 
-  services StaffService[]
-  duties   StaffAssignment[]
+  services       StaffService[]
+  duties         StaffAssignment[]
+  accountEntries StaffAccountEntry[]
+  settlements    StaffSettlement[]
 }
 
 // Join table for Staff <-> Service. Deliberately no is_active column here --
@@ -303,14 +308,14 @@ model Payment {
 // boundary. "Who worked on contract #2" = periods whose dates overlap #2's.
 // The contract link is frozen later, in the step-3 earned (salary) rows.
 model StaffAssignment {
-  id           Int           @id @default(autoincrement())
+  id           Int                @id @default(autoincrement())
   orderId      Int
-  order        CustomerOrder @relation(fields: [orderId], references: [id])
+  order        CustomerOrder      @relation(fields: [orderId], references: [id])
   staffId      Int
-  staff        Staff         @relation(fields: [staffId], references: [id])
-  startDate    DateTime      @db.Date
-  startDayPart DayPart       @default(FULL)
-  endDate      DateTime?     @db.Date
+  staff        Staff              @relation(fields: [staffId], references: [id])
+  startDate    DateTime           @db.Date
+  startDayPart DayPart            @default(FULL)
+  endDate      DateTime?          @db.Date
   endDayPart   DayPart?
   // Optional "why" when someone stops ("hospitalised", "family function").
   // There's deliberately no leave/replaced/exit field: on the day someone
@@ -318,9 +323,123 @@ model StaffAssignment {
   // next on the order (same staff returns = leave, someone else starts =
   // handover, nothing yet = "no staff since").
   endNote      String?
-  createdAt    DateTime      @default(now()) @db.Timestamptz
-  updatedAt    DateTime      @updatedAt @db.Timestamptz
+  createdAt    DateTime           @default(now()) @db.Timestamptz
+  updatedAt    DateTime           @updatedAt @db.Timestamptz
+  // What staff salary clearings paid for this duty period.
+  settledRows  StaffSettledDuty[]
 
   @@index([orderId])
   @@index([staffId])
+}
+
+// ---------------------------------------------------------------------------
+// Staff account (step 3): a passbook per staff member.
+//
+// EARNED is not stored: it's calculated from duty periods x the staff salary
+// of the contract each day belongs to (/ 28), so it's always up to date.
+// What IS stored:
+//   StaffAccountEntry -- every amount paid to the staff, or extra added for them
+//   StaffSettlement   -- each "Clear the salary now"
+//   StaffSettledDuty  -- what each clearing paid, per duty period x contract
+// Settled vs To settle: for each duty period x contract the app compares what
+// was paid (latest StaffSettledDuty row) with what is worked now; any
+// difference -- late duty, a corrected date, a moved contract boundary -- is
+// "To settle" until the next clearing. Nothing is ever rewritten or deleted.
+// ---------------------------------------------------------------------------
+
+// PAID: money given to the staff (salary, advance, recharge...) -- minus.
+// EXTRA: a one-time amount added for them (e.g. Rs 500 extra) -- plus.
+enum StaffEntryType {
+  PAID
+  EXTRA
+}
+
+// How money was given to the staff (PAID entries only).
+enum StaffPaymentMode {
+  CASH_OFFICE
+  CASH_OWNER
+  CASH_CUSTOMER
+  ONLINE_TRANSFER
+  OTHER
+}
+
+// One payment or extra. Never edited: a mistake is voided (kept, crossed
+// out). Once settlementId is set (cleared) it is Settled and can't be voided.
+model StaffAccountEntry {
+  id             Int               @id @default(autoincrement())
+  staffId        Int
+  staff          Staff             @relation(fields: [staffId], references: [id])
+  type           StaffEntryType
+  // Effect on the balance, whole rupees: PAID < 0, EXTRA > 0.
+  amount         Int
+  // The true date it happened (date of pay / of the extra), even if entered later.
+  entryDate      DateTime          @db.Date
+  remarks        String
+  mode           StaffPaymentMode? // PAID only
+  accountDetails String?
+  recordedById   Int?
+  recordedBy     User?             @relation("StaffEntryRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  voidedAt       DateTime?         @db.Timestamptz
+  voidedById     Int?
+  voidedBy       User?             @relation("StaffEntryVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  voidReason     String?
+  // The clearing that settled it. Null = To settle.
+  settlementId   Int?
+  settlement     StaffSettlement?  @relation(fields: [settlementId], references: [id])
+  createdAt      DateTime          @default(now()) @db.Timestamptz
+
+  @@index([staffId, settlementId])
+}
+
+// One "Clear the salary now": the totals as agreed that day. Never undone.
+model StaffSettlement {
+  id          Int                 @id @default(autoincrement())
+  staffId     Int
+  staff       Staff               @relation(fields: [staffId], references: [id])
+  clearedOn   DateTime            @db.Date
+  earned      Int // duty differences paid in this clearing (can include minus rows)
+  extras      Int // EXTRA entries settled in this clearing
+  paid        Int // PAID entries before the final payment (positive number)
+  // What was paid to clear it. Negative = the staff owed this much; it opens the next period.
+  finalAmount Int
+  clearedById Int?
+  clearedBy   User?               @relation(fields: [clearedById], references: [id], onDelete: SetNull)
+  createdAt   DateTime            @default(now()) @db.Timestamptz
+  settledDuty StaffSettledDuty[]
+  entries     StaffAccountEntry[]
+
+  @@index([staffId, clearedOn])
+}
+
+// What one clearing paid for one duty period x contract.
+//   fromDate/toDate/halfDays/amount -- what THIS clearing paid (can be minus:
+//                                       "paid before, no longer worked")
+//   settled*                         -- the running total paid for this duty x
+//                                       contract after this clearing: the
+//                                       latest row is "what has been paid"
+// Order code and customer name are copied in, so the passbook still reads
+// right if they change later.
+model StaffSettledDuty {
+  id              Int             @id @default(autoincrement())
+  settlementId    Int
+  settlement      StaffSettlement @relation(fields: [settlementId], references: [id])
+  staffId         Int
+  dutyId          Int
+  duty            StaffAssignment @relation(fields: [dutyId], references: [id])
+  orderId         Int
+  orderCode       String
+  customerName    String
+  contractNumber  Int
+  staffSalary     Int
+  fromDate        DateTime        @db.Date
+  toDate          DateTime        @db.Date
+  halfDays        Int // days x 2 paid in this clearing (minus allowed)
+  amount          Int // rupees paid in this clearing (minus allowed)
+  settledFrom     DateTime?       @db.Date // null = nothing left paid (fully reversed)
+  settledTo       DateTime?       @db.Date
+  settledHalfDays Int
+  settledAmount   Int
+
+  @@index([settlementId])
+  @@index([staffId, dutyId, contractNumber])
 }

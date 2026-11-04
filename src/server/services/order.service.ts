@@ -14,7 +14,7 @@ import {
 import { formatDayMonthYear, fromDayNumber, fromIsoDate, toDayNumber } from "@/server/domain/days";
 import { calculatePaymentStatus } from "@/server/domain/payments";
 import { formatRupees } from "@/lib/money";
-import { dutyPeriodsClash, type DutyPeriodFacts } from "@/server/domain/duty";
+import { dutyPeriodsClash, isPaidDay, type DutyDayFacts, type DutyPeriodFacts } from "@/server/domain/duty";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/server/domain/errors";
 import { ALL_ROLES, assertRole, type AuthUser } from "@/server/services/authz";
 import { staffSearchWhere } from "@/server/services/staff.service";
@@ -751,10 +751,13 @@ const MAX_CONTRACTS_PER_CATCH_UP = 60;
  * nightly job (server/jobs), not by a person -- so there is no `user` and no
  * branch rule: it works on ALL orders.
  *
- * Due = the order hasn't ended, someone is still on duty (care continues), and
- * today is on/after nextContractOpensOn() of the latest contract (2 days
- * before its end). The new contract copies the latest one's rate and salary,
- * marked autoStarted so the order page asks someone to check the rate.
+ * Due = the order hasn't ended, today is on/after nextContractOpensOn() of the
+ * latest contract (2 days before its end), and care goes on past that end:
+ * someone is still on duty, OR a stopped duty period has a served day after
+ * the end (e.g. duty 08/10-01/11 entered late, with its stop date, while
+ * contract #8 ended 28/10 -- those 4 days need contract #9). The new contract
+ * copies the latest one's rate and salary, marked autoStarted so the order
+ * page asks someone to check the rate.
  *
  * Safe to run any number of times: it only ever creates what is due, and the
  * unique (order, contract number) rule refuses a duplicate if a person presses
@@ -769,10 +772,11 @@ export async function startDueContracts(db: Db): Promise<{ created: number }> {
     // opensOn <= today  <=>  end <= today + (window - 1)
     const latestEndAtMost = fromDayNumber(todayDay + NEXT_CONTRACT_WINDOW_DAYS - 1);
 
+    // Whether care goes on past the end is checked per order inside the
+    // transaction (it compares duty with the latest contract's end).
     const candidates = await db.customerOrder.findMany({
         where: {
             endDate: null,
-            duties: { some: { endDate: null } }, // someone on duty
             contracts: { some: { endDate: { lte: latestEndAtMost } } },
         },
         select: { id: true },
@@ -790,6 +794,19 @@ export async function startDueContracts(db: Db): Promise<{ created: number }> {
     return { created };
 }
 
+/**
+ * Does this duty period serve a day after `afterDay`? Still running = yes.
+ * A No pay day doesn't count -- it must never open an empty contract.
+ */
+function servesAfter(duty: DutyDayFacts, afterDay: number): boolean {
+    if (duty.endDate === null) return true;
+    const end = toDayNumber(duty.endDate);
+    for (let day = Math.max(afterDay + 1, toDayNumber(duty.startDate)); day <= end; day++) {
+        if (isPaidDay(duty, day)) return true;
+    }
+    return false;
+}
+
 /** Creates this order's due contracts, one after another, in one transaction. */
 async function catchUpOrderContracts(db: Db, orderId: number, todayDay: number): Promise<number> {
     return db.$transaction(async (tx) => {
@@ -800,14 +817,16 @@ async function catchUpOrderContracts(db: Db, orderId: number, todayDay: number):
                 where: { id: orderId },
                 select: {
                     endDate: true,
-                    _count: { select: { duties: { where: { endDate: null } } } },
+                    duties: { select: { startDate: true, startDayPart: true, endDate: true, endDayPart: true } },
                     contracts: { orderBy: { contractNumber: "desc" }, take: 1 },
                 },
             });
             const latest = order?.contracts[0];
-            if (!order || order.endDate !== null || order._count.duties === 0) break;
+            if (!order || order.endDate !== null) break;
             if (!latest?.endDate) break; // end still pending: nothing is due
             if (todayDay < toDayNumber(nextContractOpensOn(latest.endDate))) break; // not yet
+            const latestEnd = toDayNumber(latest.endDate);
+            if (!order.duties.some((d) => servesAfter(d, latestEnd))) break; // care stopped at the end
 
             await tx.contract.create({
                 data: {

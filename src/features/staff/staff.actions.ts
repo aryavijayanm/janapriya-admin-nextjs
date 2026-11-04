@@ -23,6 +23,13 @@ import {
 } from "@/server/services/staff.service";
 import type { PhotoUpload } from "@/server/services/staff-photo";
 import { staffIdSchema, staffSchema, staffStatusSchema } from "@/server/validators/staff";
+import { addStaffEntry, clearStaffSalary, voidStaffEntry } from "@/server/services/staff-account.service";
+import {
+    clearSalarySchema,
+    staffEntryIdSchema,
+    staffEntrySchema,
+    voidStaffEntrySchema,
+} from "@/server/validators/staff-account";
 
 /**
  * Three outcomes (same as customers):
@@ -113,6 +120,48 @@ export async function updateStaffAction(staffId: unknown, formData: FormData): P
         revalidatePath(`/staff/${parsedId.data}`);
     }
     return toSaveResult(result);
+}
+
+// --- Staff account (rules in staff-account.service) ------------------------
+
+/** Every staff-account change refreshes that staff member's account page. */
+async function accountChange(staffId: number, run: () => Promise<unknown>): Promise<ActionResult> {
+    try {
+        await run();
+    } catch (error) {
+        return toActionError(error);
+    }
+    revalidatePath(`/staff/${staffId}/account`);
+    return { ok: true };
+}
+
+export async function addStaffEntryAction(staffId: unknown, input: unknown): Promise<ActionResult> {
+    const { db, user } = await requireUser();
+    const id = staffIdSchema.safeParse(staffId);
+    if (!id.success) return invalidInput(id.error);
+    const parsed = staffEntrySchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    return accountChange(id.data, () => addStaffEntry(db, user, id.data, parsed.data));
+}
+
+export async function voidStaffEntryAction(staffId: unknown, entryId: unknown, input: unknown): Promise<ActionResult> {
+    const { db, user } = await requireUser();
+    const sId = staffIdSchema.safeParse(staffId);
+    if (!sId.success) return invalidInput(sId.error);
+    const eId = staffEntryIdSchema.safeParse(entryId);
+    if (!eId.success) return invalidInput(eId.error);
+    const parsed = voidStaffEntrySchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    return accountChange(sId.data, () => voidStaffEntry(db, user, eId.data, parsed.data.reason));
+}
+
+export async function clearStaffSalaryAction(staffId: unknown, input: unknown): Promise<ActionResult> {
+    const { db, user } = await requireUser();
+    const id = staffIdSchema.safeParse(staffId);
+    if (!id.success) return invalidInput(id.error);
+    const parsed = clearSalarySchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    return accountChange(id.data, () => clearStaffSalary(db, user, id.data, parsed.data));
 }
 
 export async function setStaffStatusAction(staffId: unknown, status: unknown): Promise<ActionResult> {
