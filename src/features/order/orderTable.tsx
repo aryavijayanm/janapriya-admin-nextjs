@@ -26,6 +26,13 @@ export const ORDER_STATUS_STYLES = {
     ENDED: { label: "Ended", className: "bg-gray-200 text-gray-600" },
 } as const;
 
+const REFUND_PENDING_STYLE = { label: "Ended – refund pending", className: "bg-orange-100 text-orange-800" };
+
+/** The status badge for an order -- one place, used by every order list and the order page. */
+export function orderStatusStyle(order: { status: keyof typeof ORDER_STATUS_STYLES; refundPending: boolean }) {
+    return order.refundPending ? REFUND_PENDING_STYLE : ORDER_STATUS_STYLES[order.status];
+}
+
 export const BRANCH_STYLES = {
     KERALA: { label: "Kerala", className: "bg-purple-100 text-purple-700" },
     OUTSIDE: { label: "Outside", className: "bg-sky-100 text-sky-700" },
@@ -70,7 +77,7 @@ export default function OrderTable({ orders, pagination, canSeeOutside }: OrderT
         },
         { header: "Branch", accessor: (o) => <Badge {...BRANCH_STYLES[o.branch]} /> },
         { header: "Services", accessor: (o) => o.serviceAbbreviations.join(", ") || "—" },
-        { header: "Status", accessor: (o) => <Badge {...ORDER_STATUS_STYLES[o.status]} /> },
+        { header: "Status", accessor: (o) => <Badge {...orderStatusStyle(o)} /> },
         { header: "Current staff", accessor: (o) => o.currentStaff ?? "—" },
         {
             header: "Current contract",

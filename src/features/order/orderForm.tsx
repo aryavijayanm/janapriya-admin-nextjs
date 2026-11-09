@@ -37,19 +37,27 @@ interface OrderFormProps {
     services: ServiceOption[];
     /** False for OUTSIDER: the branch field is hidden. */
     canChooseBranch: boolean;
+    /**
+     * New order only: "Restart" of this ended order -- branch, services and
+     * remarks start from it (all changeable); the customer stays the same.
+     */
+    restartFrom?: { code: string; branch: BranchValue; serviceIds: number[]; remarks: string | null } | null;
 }
 
-export default function OrderForm({ order, customer: preselected, services, canChooseBranch }: OrderFormProps) {
+export default function OrderForm({ order, customer: preselected, services, canChooseBranch, restartFrom }: OrderFormProps) {
     const router = useRouter();
     const isEditing = !!order;
+    // Editing an order, or restarting one: the customer can't be changed.
+    const customerLocked = isEditing || !!restartFrom;
+    const start = order ?? restartFrom ?? null;
 
     const [customer, setCustomer] = useState<CustomerOption | null>(order?.customer ?? preselected ?? null);
     // New order: no branch picked yet, so it can't be saved by forgetting the
     // field ("" fails orderSchema with "Please choose a branch"). OUTSIDER never
     // sees the field and always gets Kerala (the server forces it too).
-    const [branch, setBranch] = useState<BranchValue | "">(order?.branch ?? (canChooseBranch ? "" : "KERALA"));
-    const [serviceIds, setServiceIds] = useState<number[]>(order?.serviceIds ?? []);
-    const [remarks, setRemarks] = useState(order?.remarks ?? "");
+    const [branch, setBranch] = useState<BranchValue | "">(start?.branch ?? (canChooseBranch ? "" : "KERALA"));
+    const [serviceIds, setServiceIds] = useState<number[]>(start?.serviceIds ?? []);
+    const [remarks, setRemarks] = useState(start?.remarks ?? "");
     const { run, isPending: isSubmitting, error, setError } = useServerAction();
     const [success, setSuccess] = useState(false);
 
@@ -85,7 +93,9 @@ export default function OrderForm({ order, customer: preselected, services, canC
             return;
         }
 
-        const result = await run(() => (order ? updateOrderAction(order.id, payload) : createOrderAction(payload)));
+        const result = await run(() =>
+            order ? updateOrderAction(order.id, payload) : createOrderAction(payload, restartFrom?.code ?? null),
+        );
         if (!result.ok) return; // run() already shows the message
         setSuccess(true);
         // A moment to see the success message, then the order's page.
@@ -96,13 +106,19 @@ export default function OrderForm({ order, customer: preselected, services, canC
         // p-4 on phones, p-8 from sm: up -- same look on a laptop.
         <div className="max-w-4xl mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md">
             <h2 className="text-2xl font-bold mb-6 text-gray-800">
-                {isEditing ? `Edit Order · ${order.code}` : "New Order"}
+                {isEditing ? `Edit Order · ${order.code}` : restartFrom ? `Restart order ${restartFrom.code}` : "New Order"}
             </h2>
+            {restartFrom && (
+                <p className="-mt-4 mb-6 text-sm text-gray-600">
+                    A new order (with its own code, contracts from #1), linked to {restartFrom.code}. Details are copied
+                    from it — change anything that&apos;s different now.
+                </p>
+            )}
 
             <form onSubmit={handleSubmit} className="space-y-6">
                 <FormField label="Customer" htmlFor="customer">
-                    {/* An order never changes customer: when editing, shown but not changeable. */}
-                    <CustomerPicker value={customer} onChange={setCustomer} readOnly={isEditing} />
+                    {/* An order never changes customer: when editing or restarting, shown but not changeable. */}
+                    <CustomerPicker value={customer} onChange={setCustomer} readOnly={customerLocked} />
                 </FormField>
 
                 {canChooseBranch && (

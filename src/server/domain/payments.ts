@@ -28,7 +28,12 @@ export interface CalculatedPaymentStatus {
     fullyPaidOn: Date | null;
 }
 
-/** Paid status of one contract from its rate and its payments. */
+/**
+ * Paid status of one contract from what is due and its payments. `rate` is
+ * the amount due: the contract rate, or -- after End order -- the charge for
+ * the days served (see contractAmountDue). Nothing due (a ₹0 charge) counts
+ * as fully paid: nothing is left to collect.
+ */
 export function calculatePaymentStatus(rate: number, payments: PaymentFacts[]): CalculatedPaymentStatus {
     const counting = payments
         .filter((p) => p.voidedAt === null)
@@ -42,8 +47,22 @@ export function calculatePaymentStatus(rate: number, payments: PaymentFacts[]): 
     }
 
     const status: PaymentStatusValue =
-        runningTotal === 0 ? "NOT_PAID" : runningTotal >= rate ? "FULLY_PAID" : "PARTLY_PAID";
+        runningTotal >= rate ? "FULLY_PAID" : runningTotal === 0 ? "NOT_PAID" : "PARTLY_PAID";
     return { status, paidAmount: runningTotal, fullyPaidOn: status === "FULLY_PAID" ? fullyPaidOn : null };
+}
+
+/** What the customer must pay for a contract: the charge once the order ended, else the rate. */
+export function contractAmountDue(contract: { rate: number; charge: number | null }): number {
+    return contract.charge ?? contract.rate;
+}
+
+/**
+ * After End order: what we must give back on a contract -- paid more than
+ * the charge, minus refunds already recorded. 0 while the order runs.
+ */
+export function refundDue(contract: { charge: number | null; paidAmount: number; refundedAmount: number }): number {
+    if (contract.charge === null) return 0;
+    return Math.max(0, contract.paidAmount - contract.charge - contract.refundedAmount);
 }
 
 /** What is still owed on a contract (never below 0). */

@@ -108,19 +108,26 @@ export const settleKey = (dutyId: number, contractNumber: number) => `${dutyId}#
 
 /**
  * What every duty period x contract is worth now: all days of each duty up to
- * and including `uptoDay` (today). Ordered by first day.
+ * and including `uptoDay`. Ordered by first day.
+ *
+ * `paidUpto` (optional, dutyId -> last day already paid by a clearing) lets a
+ * duty count PAST uptoDay up to its paid day. The staff balances estimate
+ * uses it: it counts until yesterday, but a day already paid today is known,
+ * so it must not show up as "paid, not worked" (a fake debt).
  */
 export function calculateDutyEarnings(
     duties: StaffDuty[],
     contractsByOrder: Map<number, SalaryContract[]>,
     uptoDay: number,
+    paidUpto?: Map<number, number>,
 ): DutyEarning[] {
     const rows = new Map<string, { duty: StaffDuty; contract: SalaryContract; first: number; last: number; halfDays: number }>();
 
     for (const duty of duties) {
         const contracts = contractsByOrder.get(duty.orderId) ?? [];
         const from = toDayNumber(duty.startDate);
-        const to = Math.min(duty.endDate === null ? Number.POSITIVE_INFINITY : toDayNumber(duty.endDate), uptoDay);
+        const countUpto = Math.max(uptoDay, paidUpto?.get(duty.dutyId) ?? Number.NEGATIVE_INFINITY);
+        const to = Math.min(duty.endDate === null ? Number.POSITIVE_INFINITY : toDayNumber(duty.endDate), countUpto);
 
         for (let day = from; day <= to; day++) {
             const contract = contractForDay(contracts, day);

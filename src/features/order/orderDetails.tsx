@@ -3,7 +3,20 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, CalendarPlus, Hash, MapPin, Pencil, Phone, Play, StickyNote, UserRound } from "lucide-react";
+import {
+    ArrowLeft,
+    CalendarPlus,
+    Hash,
+    MapPin,
+    Pencil,
+    Phone,
+    Play,
+    RotateCcw,
+    Square,
+    StickyNote,
+    Undo2,
+    UserRound,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatDate } from "@/lib/date";
@@ -11,7 +24,9 @@ import { latestPage } from "@/lib/latestPage";
 import { formatCustomerCode } from "@/server/validators/customer";
 import type { OrderDetails as Order } from "@/server/services/order.service";
 import type { CoverageGap } from "@/server/domain/duty";
-import { BRANCH_STYLES, ORDER_STATUS_STYLES } from "@/features/order/orderTable";
+import { BRANCH_STYLES, orderStatusStyle } from "@/features/order/orderTable";
+import { EndOrderDialog } from "@/features/order/EndOrderDialog";
+import { UndoEndOrderDialog } from "@/features/order/UndoEndOrderDialog";
 import { SectionCard } from "@/features/order/SectionCard";
 import { ContractsSection } from "@/features/order/ContractsSection";
 import { DutySection } from "@/features/order/DutySection";
@@ -48,11 +63,19 @@ function FactChip({ icon: Icon, children }: { icon: LucideIcon; children: React.
 export default function OrderDetails({ order, gaps, nextContract, leaveDays, today }: OrderDetailsProps) {
     const router = useRouter();
     const [startingCare, setStartingCare] = useState(false);
+    const [dialog, setDialog] = useState<"end" | "undoEnd" | null>(null);
 
-    const status = ORDER_STATUS_STYLES[order.status];
+    const status = orderStatusStyle(order);
     const branch = BRANCH_STYLES[order.branch];
     const isEnded = order.status === "ENDED";
     const hasStarted = order.contracts.length > 0;
+    // Undo end only until money has gone back, and never once restarted (the server checks too).
+    const canUndoEnd = isEnded && !order.restartedAs && order.contracts.every((c) => c.refundedAmount === 0);
+    const onDutyNow = order.duties.find((d) => d.endDate === null) ?? null;
+    const lastDutyDay = order.duties.reduce<Date | null>(
+        (latest, d) => (d.endDate && (!latest || d.endDate > latest) ? d.endDate : latest),
+        null,
+    );
 
     const contracts = latestPage(order.contracts, CONTRACTS_SHOWN);
     const duties = latestPage(order.duties, DUTIES_SHOWN);
@@ -100,6 +123,29 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
                                 {order.customer.address}
                             </p>
                         </div>
+
+                        {/* End and Restart, both ways. */}
+                        <div className="mt-3 space-y-1 text-sm">
+                            {isEnded && order.endDate && (
+                                <p className="font-medium text-gray-700">
+                                    Ended on {formatDate(order.endDate)}
+                                    {order.endNote && <span className="font-normal text-gray-600"> — {order.endNote}</span>}
+                                </p>
+                            )}
+                            {order.restartedFrom && (
+                                <Link href={`/orders/${order.restartedFrom.code}`} className="flex w-fit items-center gap-1.5 text-primary hover:underline">
+                                    <RotateCcw className="w-4 h-4" />
+                                    Restarted from {order.restartedFrom.code}
+                                    {order.restartedFrom.endDate && ` (ended ${formatDate(order.restartedFrom.endDate)})`}
+                                </Link>
+                            )}
+                            {order.restartedAs && (
+                                <Link href={`/orders/${order.restartedAs.code}`} className="flex w-fit items-center gap-1.5 text-primary hover:underline">
+                                    <RotateCcw className="w-4 h-4" />
+                                    Restarted as {order.restartedAs.code} ({formatDate(order.restartedAs.createdAt)})
+                                </Link>
+                            )}
+                        </div>
                     </div>
 
                     <div className="flex flex-wrap gap-2 sm:flex-col sm:items-end sm:shrink-0">
@@ -109,6 +155,29 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
                             <Button variant="primary" size="sm" onClick={() => router.push(`/orders/${order.code}/edit`)}>
                                 <Pencil className="w-4 h-4" />
                                 Edit order
+                            </Button>
+                        )}
+                        {!isEnded && (
+                            <Button variant="danger" size="sm" onClick={() => setDialog("end")}>
+                                <Square className="w-4 h-4" />
+                                End order
+                            </Button>
+                        )}
+                        {canUndoEnd && (
+                            <Button variant="secondary" size="sm" onClick={() => setDialog("undoEnd")}>
+                                <Undo2 className="w-4 h-4" />
+                                Undo end
+                            </Button>
+                        )}
+                        {isEnded && !order.restartedAs && (
+                            <Button
+                                variant="success"
+                                size="sm"
+                                title="A new order for the same customer, linked to this one"
+                                onClick={() => router.push(`/orders/new?restartFrom=${order.code}`)}
+                            >
+                                <RotateCcw className="w-4 h-4" />
+                                Restart
                             </Button>
                         )}
                     </div>
@@ -178,6 +247,17 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
             )}
 
             {startingCare && <StartCareDialog orderId={order.id} today={today} onClose={() => setStartingCare(false)} />}
+            {dialog === "end" && (
+                <EndOrderDialog
+                    orderId={order.id}
+                    code={order.code}
+                    onDuty={onDutyNow ? { name: onDutyNow.staff.name, startDate: onDutyNow.startDate } : null}
+                    lastDutyDay={lastDutyDay}
+                    today={today}
+                    onClose={() => setDialog(null)}
+                />
+            )}
+            {dialog === "undoEnd" && <UndoEndOrderDialog orderId={order.id} code={order.code} onClose={() => setDialog(null)} />}
         </div>
     );
 }

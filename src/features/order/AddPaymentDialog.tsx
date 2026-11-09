@@ -14,6 +14,7 @@ import { formatRupees } from "@/lib/money";
 import { recordPaymentAction } from "@/features/order/order.actions";
 import { useServerAction } from "@/hooks/useServerAction";
 import { PAYMENT_MODES, PAYMENT_MODE_LABELS, paymentSchema, type PaymentModeValue } from "@/server/validators/payment";
+import { balanceDue, contractAmountDue } from "@/server/domain/payments";
 
 /** One payment already recorded on this order (any contract), for the double-entry check. */
 export interface ExistingOrderPayment {
@@ -27,7 +28,7 @@ export interface ExistingOrderPayment {
 }
 
 interface AddPaymentDialogProps {
-    contract: { id: number; contractNumber: number; rate: number; paidAmount: number };
+    contract: { id: number; contractNumber: number; rate: number; charge: number | null; paidAmount: number };
     /** Every payment on the order -- already loaded on the page, so the check costs no call. */
     orderPayments: ExistingOrderPayment[];
     /** Kerala's today, yyyy-mm-dd -- the latest allowed paid-on date. */
@@ -49,7 +50,9 @@ const toIso = (date: Date) => date.toISOString().slice(0, 10);
 // in the browser from data the page already has; the server still enforces
 // the real rules (balance, dates).
 export function AddPaymentDialog({ contract, orderPayments, today, onClose }: AddPaymentDialogProps) {
-    const due = Math.max(0, contract.rate - contract.paidAmount);
+    // The charge for the days served once the order ended, else the rate -- same rule as the server.
+    const amountDue = contractAmountDue(contract);
+    const due = balanceDue(amountDue, contract.paidAmount);
     const [amount, setAmount] = useState(due > 0 ? due : Number.NaN);
     const [paidOn, setPaidOn] = useState("");
     const [mode, setMode] = useState<PaymentModeValue | "">("");
@@ -101,8 +104,8 @@ export function AddPaymentDialog({ contract, orderPayments, today, onClose }: Ad
             <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="grid grid-cols-3 gap-2 rounded-lg bg-gray-50 px-4 py-3 text-sm tabular-nums">
                     <div>
-                        <p className="text-xs text-gray-500">Rate</p>
-                        <p className="font-semibold">{formatRupees(contract.rate)}</p>
+                        <p className="text-xs text-gray-500">{contract.charge === null ? "Rate" : "Charge"}</p>
+                        <p className="font-semibold">{formatRupees(amountDue)}</p>
                     </div>
                     <div>
                         <p className="text-xs text-gray-500">Paid</p>

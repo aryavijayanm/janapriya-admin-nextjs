@@ -6,10 +6,11 @@ import { runDailyJobs } from "@/server/jobs/daily";
 //
 //   curl -X POST -H "Authorization: Bearer $CRON_SECRET" https://<app>/api/cron/daily
 //
-// SCHEDULE: 00:05 Kerala time. Most schedulers use UTC, and Kerala is UTC+5:30
-// (no daylight saving), so the cron line is:
+// SCHEDULE: 02:00 Kerala time (quiet, and clearly past midnight). Most
+// schedulers use UTC, and Kerala is UTC+5:30 (no daylight saving), so the
+// cron line is:
 //
-//   35 18 * * *        <- 18:35 UTC = 00:05 Kerala, NOT "5 0 * * *" (that's 05:35 Kerala)
+//   30 20 * * *        <- 20:30 UTC = 02:00 Kerala, NOT "0 2 * * *" (that's 07:30 Kerala)
 //
 // Protected by CRON_SECRET (a long random value in .env, never committed):
 // without it anyone on the internet could trigger the job. Not a logged-in

@@ -5,7 +5,7 @@ import type { Db } from "@/server/db/client";
 import { todayInKerala } from "@/server/domain/age";
 import { formatDayMonthYear, fromIsoDate, toDayNumber } from "@/server/domain/days";
 import { NotFoundError, ValidationError } from "@/server/domain/errors";
-import { balanceDue } from "@/server/domain/payments";
+import { balanceDue, contractAmountDue } from "@/server/domain/payments";
 import { ALL_ROLES, assertRole, type AuthUser } from "@/server/services/authz";
 import { formatRupees } from "@/lib/money";
 import {
@@ -26,15 +26,19 @@ import type { PaymentInput } from "@/server/validators/payment";
 /** Everyone who can open an order may record and void its payments (owner's decision). */
 const PAYMENT_MODULE_ROLES: Role[] = [...ALL_ROLES];
 
-/** The contract a payment change is about, with its order already checked. */
+/**
+ * The contract a payment change is about, with its order already checked.
+ * Ended orders are allowed: the customer may still pay what's left of the
+ * charge, and a wrong payment may still be voided.
+ */
 async function getContractForPayment(tx: Prisma.TransactionClient, user: AuthUser, contractId: number) {
     const contract = await tx.contract.findUnique({
         where: { id: contractId },
-        select: { id: true, orderId: true, contractNumber: true, rate: true },
+        select: { id: true, orderId: true, contractNumber: true, rate: true, charge: true, refundedAmount: true },
     });
     if (!contract) throw new NotFoundError("Contract not found");
-    // Hidden from this user (OUTSIDER + OUTSIDE order) -> "not found"; ended -> refused.
-    const order = await getVisibleOrderForUpdate(tx, user, contract.orderId);
+    // Hidden from this user (OUTSIDER + OUTSIDE order) -> "not found".
+    const order = await getVisibleOrderForUpdate(tx, user, contract.orderId, { allowEnded: true });
     return { contract, order };
 }
 
@@ -55,7 +59,8 @@ export async function recordPayment(
         const { contract, order } = await getContractForPayment(tx, user, contractId);
 
         const paidAmount = await lockContractAndGetPaid(tx, contractId);
-        const due = balanceDue(contract.rate, paidAmount);
+        // The charge for the days served once the order ended, else the rate.
+        const due = balanceDue(contractAmountDue(contract), paidAmount);
         if (due === 0) {
             throw new ValidationError(`Contract #${contract.contractNumber} is already fully paid`);
         }
@@ -98,12 +103,21 @@ export async function voidPayment(
             select: { contractId: true, voidedAt: true, amount: true, paidOn: true },
         });
         if (!payment) throw new NotFoundError("Payment not found");
-        const { order } = await getContractForPayment(tx, user, payment.contractId);
-        await lockContractAndGetPaid(tx, payment.contractId);
+        const { contract, order } = await getContractForPayment(tx, user, payment.contractId);
+        const paidAmount = await lockContractAndGetPaid(tx, payment.contractId);
 
         if (payment.voidedAt !== null) {
             throw new ValidationError(
                 `This payment of ${formatRupees(payment.amount)} (${formatDayMonthYear(payment.paidOn)}) is already voided`,
+            );
+        }
+        // A refund already given came out of these payments: the refunds must
+        // never be more than what was paid above the charge.
+        const refundable = Math.max(0, paidAmount - payment.amount - (contract.charge ?? paidAmount));
+        if (contract.refundedAmount > refundable) {
+            throw new ValidationError(
+                `${formatRupees(contract.refundedAmount)} was already refunded from this contract's payments. ` +
+                    "Void the refund first, then this payment.",
             );
         }
 

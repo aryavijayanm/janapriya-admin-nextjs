@@ -7,7 +7,12 @@ import { Button } from "@/components/ui/Button";
 import { formatDate, formatDateTime } from "@/lib/date";
 import { formatRupees } from "@/lib/money";
 import type { ClearedPeriodView, DutyRowView, StaffAccount as Account, StaffEntryView } from "@/server/services/staff-account.service";
-import { STAFF_ENTRY_TYPE_LABELS, STAFF_PAYMENT_MODE_LABELS } from "@/server/validators/staff-account";
+import {
+    STAFF_ENTRY_TYPE_LABELS,
+    STAFF_PAYMENT_MODE_LABELS,
+    STAFF_RECEIVED_MODE_LABELS,
+    type StaffReceivedModeValue,
+} from "@/server/validators/staff-account";
 import { AddStaffEntryDialog } from "@/features/staff/AddStaffEntryDialog";
 import { VoidStaffEntryDialog } from "@/features/staff/VoidStaffEntryDialog";
 import { ClearSalaryDialog } from "@/features/staff/ClearSalaryDialog";
@@ -111,9 +116,11 @@ export function StaffAccount({ account }: { account: Account }) {
                 <td className={`${CELL} ${strike}`}>{isPaid ? formatDate(e.entryDate) : ""}</td>
                 <td className={CELL}>
                     <span className={strike}>{e.remarks}</span>
-                    {isPaid && e.mode && (
+                    {e.mode && (
                         <p className={`text-xs text-gray-500 ${strike}`}>
-                            {STAFF_PAYMENT_MODE_LABELS[e.mode]}
+                            {e.type === "RECEIVED"
+                                ? STAFF_RECEIVED_MODE_LABELS[e.mode as StaffReceivedModeValue] ?? STAFF_PAYMENT_MODE_LABELS[e.mode]
+                                : STAFF_PAYMENT_MODE_LABELS[e.mode]}
                             {e.accountDetails && ` · ${e.accountDetails}`}
                         </p>
                     )}
@@ -126,7 +133,8 @@ export function StaffAccount({ account }: { account: Account }) {
                 </td>
                 <td className={CELL}>{!voided && <Status settled={settled} />}</td>
                 <td className={`${CELL} text-right`}>
-                    {!settled && !voided && (
+                    {/* A write off can be undone only by the Owner (the server checks too). */}
+                    {!settled && !voided && (e.type !== "WRITE_OFF" || account.canWriteOff) && (
                         <Button variant="ghost" size="sm" className="text-red-600" onClick={() => setDialog({ kind: "void", entry: e })}>
                             Void
                         </Button>
@@ -140,7 +148,7 @@ export function StaffAccount({ account }: { account: Account }) {
         carried < 0 ? (
             <tr key={key} className="border-b border-gray-100 bg-amber-50/50">
                 <td className={CELL} colSpan={4}>
-                    <span className="font-medium text-amber-800">Owed from last clearing</span>
+                    <span className="font-medium text-amber-800">Amount from staff (last clearing)</span>
                 </td>
                 <td className={`${CELL} text-right font-semibold text-amber-800`}>−{formatRupees(-carried)}</td>
                 <td className={CELL} colSpan={3} />
@@ -156,7 +164,8 @@ export function StaffAccount({ account }: { account: Account }) {
             <td colSpan={COLUMNS} className="px-3 py-2 text-sm font-semibold text-gray-700">
                 ══ CLEARED {formatDate(p.clearedOn)} · earned {signedRupees(p.earned + p.extras)} · paid{" "}
                 {formatRupees(p.paid + Math.max(0, p.finalAmount))}
-                {p.finalAmount < 0 ? ` · staff owed ${formatRupees(-p.finalAmount)}` : " · balance ₹0"}
+                {p.recovered !== 0 && ` · received / written off ${formatRupees(p.recovered)}`}
+                {p.finalAmount < 0 ? ` · amount from staff ${formatRupees(-p.finalAmount)}` : " · balance ₹0"}
                 <span className="font-normal text-gray-500">
                     {" "}
                     — by {p.clearedBy ?? "a removed user"}, {formatDateTime(p.createdAt)}
@@ -239,7 +248,7 @@ export function StaffAccount({ account }: { account: Account }) {
                                             Total to settle
                                         </td>
                                         <td className={`${CELL} text-right`}>{days(toSettleDays)}</td>
-                                        <td className={`${CELL} text-right`}>{signedRupees(toSettle.carried + toSettle.earned + toSettle.extras)}</td>
+                                        <td className={`${CELL} text-right`}>{signedRupees(toSettle.carried + toSettle.earned + toSettle.extras + toSettle.recovered)}</td>
                                         <td className={`${CELL} text-right`}>{formatRupees(toSettle.paid)}</td>
                                         <td className={CELL} colSpan={4} />
                                     </tr>
@@ -252,7 +261,7 @@ export function StaffAccount({ account }: { account: Account }) {
                 {isFirstPage ? (
                     <div className="flex flex-wrap items-center justify-between gap-3 border-t border-gray-200 pt-4">
                         <p className="text-lg font-bold text-gray-900">
-                            {toSettle.balance >= 0 ? "Balance to pay: " : "Advance (staff owes): "}
+                            {toSettle.balance >= 0 ? "Balance to pay: " : "Advance given – staff has to return: "}
                             <span className={toSettle.balance < 0 ? "text-amber-700" : ""}>{formatRupees(Math.abs(toSettle.balance))}</span>
                         </p>
                         <div className="flex flex-wrap gap-2">
@@ -286,7 +295,14 @@ export function StaffAccount({ account }: { account: Account }) {
                 )}
             </div>
 
-            {dialog?.kind === "add" && <AddStaffEntryDialog staffId={staff.id} onClose={() => setDialog(null)} />}
+            {dialog?.kind === "add" && (
+                <AddStaffEntryDialog
+                    staffId={staff.id}
+                    owes={Math.max(0, -toSettle.balance)}
+                    canWriteOff={account.canWriteOff}
+                    onClose={() => setDialog(null)}
+                />
+            )}
             {dialog?.kind === "void" && (
                 <VoidStaffEntryDialog staffId={staff.id} entry={dialog.entry} onClose={() => setDialog(null)} />
             )}
@@ -298,6 +314,7 @@ export function StaffAccount({ account }: { account: Account }) {
                         carried: toSettle.carried,
                         earned: toSettle.earned,
                         extras: toSettle.extras,
+                        recovered: toSettle.recovered,
                         paid: toSettle.paid,
                         balance: toSettle.balance,
                     }}

@@ -26,14 +26,33 @@ import {
     contractMoneySchema,
     dutyIdSchema,
     editDutySchema,
+    endOrderSchema,
     orderIdSchema,
     orderSchema,
+    restartFromSchema,
     staffPickerQuerySchema,
     startCareSchema,
     updateDutySchema,
 } from "@/server/validators/order";
 import { recordPayment, voidPayment } from "@/server/services/payment.service";
-import { paymentIdSchema, paymentSchema, voidPaymentSchema } from "@/server/validators/payment";
+import {
+    endOrder,
+    recordRefund,
+    undoEndOrder,
+    voidRefund,
+    type EndOrderSummary,
+} from "@/server/services/order-end.service";
+import { withStaffBalanceRefresh } from "@/server/services/staff-balance.service";
+import { refreshBalancePages } from "@/app/_lib/staff-balance-pages";
+import type { Db } from "@/server/db/client";
+import {
+    paymentIdSchema,
+    paymentSchema,
+    refundIdSchema,
+    refundSchema,
+    voidPaymentSchema,
+    voidRefundSchema,
+} from "@/server/validators/payment";
 
 /** Every order save returns the order's code, so the screen can show /orders/<code>. */
 export type OrderSaveResult = { ok: true; code: string } | ActionFailure;
@@ -64,14 +83,30 @@ async function save(run: () => Promise<{ code: string }>): Promise<OrderSaveResu
     return { ok: true, code };
 }
 
+/**
+ * `save` for changes that move staff money -- duty periods, and contract
+ * dates or staff salary: also refreshes the stored balances of the staff on
+ * that order (the staff balances look-up).
+ */
+function saveWithStaffBalances(db: Db, ref: { orderId: number } | { contractId: number }, run: () => Promise<{ code: string }>) {
+    return save(async () => {
+        const result = await withStaffBalanceRefresh(db, ref, run);
+        refreshBalancePages();
+        return result;
+    });
+}
+
 // Arguments are `unknown`: a Server Action is a public endpoint, so the
 // browser can send anything. Zod turns it into trusted, typed data.
 
-export async function createOrderAction(input: unknown): Promise<OrderSaveResult> {
+/** A new order; with `restartFrom` (an ended order's code) it is a Restart of that order. */
+export async function createOrderAction(input: unknown, restartFrom: unknown = null): Promise<OrderSaveResult> {
     const { db, user } = await requireUser();
     const parsed = orderSchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
-    return save(() => createOrder(db, user, parsed.data));
+    const from = restartFromSchema.safeParse(restartFrom);
+    if (!from.success) return invalidInput(from.error);
+    return save(() => createOrder(db, user, parsed.data, from.data));
 }
 
 export async function updateOrderAction(orderId: unknown, input: unknown): Promise<OrderSaveResult> {
@@ -89,7 +124,7 @@ export async function startCareAction(orderId: unknown, input: unknown): Promise
     if (!id.success) return invalidInput(id.error);
     const parsed = startCareSchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
-    return save(() => startCare(db, user, id.data, parsed.data));
+    return saveWithStaffBalances(db, { orderId: id.data }, () => startCare(db, user, id.data, parsed.data));
 }
 
 export async function updateDutyAction(orderId: unknown, input: unknown): Promise<OrderSaveResult> {
@@ -98,7 +133,7 @@ export async function updateDutyAction(orderId: unknown, input: unknown): Promis
     if (!id.success) return invalidInput(id.error);
     const parsed = updateDutySchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
-    return save(() => updateDuty(db, user, id.data, parsed.data));
+    return saveWithStaffBalances(db, { orderId: id.data }, () => updateDuty(db, user, id.data, parsed.data));
 }
 
 export async function editDutyAction(orderId: unknown, dutyId: unknown, input: unknown): Promise<OrderSaveResult> {
@@ -109,7 +144,7 @@ export async function editDutyAction(orderId: unknown, dutyId: unknown, input: u
     if (!dId.success) return invalidInput(dId.error);
     const parsed = editDutySchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
-    return save(() => editDuty(db, user, oId.data, dId.data, parsed.data));
+    return saveWithStaffBalances(db, { orderId: oId.data }, () => editDuty(db, user, oId.data, dId.data, parsed.data));
 }
 
 export async function startNextContractAction(orderId: unknown, input: unknown): Promise<OrderSaveResult> {
@@ -118,7 +153,7 @@ export async function startNextContractAction(orderId: unknown, input: unknown):
     if (!id.success) return invalidInput(id.error);
     const parsed = contractMoneySchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
-    return save(() => startNextContract(db, user, id.data, parsed.data));
+    return saveWithStaffBalances(db, { orderId: id.data }, () => startNextContract(db, user, id.data, parsed.data));
 }
 
 export async function updateContractMoneyAction(contractId: unknown, input: unknown): Promise<OrderSaveResult> {
@@ -127,7 +162,7 @@ export async function updateContractMoneyAction(contractId: unknown, input: unkn
     if (!id.success) return invalidInput(id.error);
     const parsed = contractMoneySchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
-    return save(() => updateContractMoney(db, user, id.data, parsed.data));
+    return saveWithStaffBalances(db, { contractId: id.data }, () => updateContractMoney(db, user, id.data, parsed.data));
 }
 
 // --- Payments (rules in payment.service) ------------------------------------
@@ -162,7 +197,61 @@ export async function deleteContractAction(contractId: unknown): Promise<OrderSa
     const { db, user } = await requireUser();
     const id = contractIdSchema.safeParse(contractId);
     if (!id.success) return invalidInput(id.error);
-    return save(() => deleteLatestContract(db, user, id.data));
+    return saveWithStaffBalances(db, { contractId: id.data }, () => deleteLatestContract(db, user, id.data));
+}
+
+// --- End order, Undo end, Refunds (rules in order-end.service) ---------------
+
+/** What "End order" would do -- the same code as saving, rolled back. Reads only. */
+export async function previewEndOrderAction(
+    orderId: unknown,
+    input: unknown,
+): Promise<{ ok: true; summary: EndOrderSummary } | ActionFailure> {
+    const { db, user } = await requireUser();
+    const id = orderIdSchema.safeParse(orderId);
+    if (!id.success) return invalidInput(id.error);
+    const parsed = endOrderSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    try {
+        return { ok: true, summary: await endOrder(db, user, id.data, parsed.data, { preview: true }) };
+    } catch (error) {
+        return toActionError(error);
+    }
+}
+
+/** Ends the order; it stops the duty on duty, so staff balances are refreshed too. */
+export async function endOrderAction(orderId: unknown, input: unknown): Promise<OrderSaveResult> {
+    const { db, user } = await requireUser();
+    const id = orderIdSchema.safeParse(orderId);
+    if (!id.success) return invalidInput(id.error);
+    const parsed = endOrderSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    return saveWithStaffBalances(db, { orderId: id.data }, () => endOrder(db, user, id.data, parsed.data));
+}
+
+export async function undoEndOrderAction(orderId: unknown): Promise<OrderSaveResult> {
+    const { db, user } = await requireUser();
+    const id = orderIdSchema.safeParse(orderId);
+    if (!id.success) return invalidInput(id.error);
+    return save(() => undoEndOrder(db, user, id.data));
+}
+
+export async function recordRefundAction(contractId: unknown, input: unknown): Promise<OrderSaveResult> {
+    const { db, user } = await requireUser();
+    const id = contractIdSchema.safeParse(contractId);
+    if (!id.success) return invalidInput(id.error);
+    const parsed = refundSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    return save(() => recordRefund(db, user, id.data, parsed.data));
+}
+
+export async function voidRefundAction(refundId: unknown, input: unknown): Promise<OrderSaveResult> {
+    const { db, user } = await requireUser();
+    const id = refundIdSchema.safeParse(refundId);
+    if (!id.success) return invalidInput(id.error);
+    const parsed = voidRefundSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error);
+    return save(() => voidRefund(db, user, id.data, parsed.data.reason));
 }
 
 /** The staff picker's search, called while typing. Reads only -- nothing to refresh. */

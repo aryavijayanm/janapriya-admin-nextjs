@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ReactNode } from "react";
-import { FileText, Pencil, Plus, Trash2 } from "lucide-react";
+import { FileText, Pencil, Plus, Trash2, Undo2 } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatDate, formatDateTime } from "@/lib/date";
 import type { OrderDetails as Order } from "@/server/services/order.service";
@@ -14,6 +14,8 @@ import { DeleteContractDialog } from "@/features/order/DeleteContractDialog";
 import { AddPaymentDialog } from "@/features/order/AddPaymentDialog";
 import { ContractPaymentsDialog } from "@/features/order/ContractPaymentsDialog";
 import { VoidPaymentDialog } from "@/features/order/VoidPaymentDialog";
+import { RecordRefundDialog } from "@/features/order/RecordRefundDialog";
+import { balanceDue, contractAmountDue, refundDue } from "@/server/domain/payments";
 
 interface ContractsSectionProps {
     order: Order;
@@ -42,6 +44,8 @@ type OpenDialog =
           contractId: number;
           payment: { id: number; amount: number; paidOn: Date; mode: PaymentModeValue };
       }
+    | { kind: "addRefund"; contractId: number; backTo: boolean }
+    | { kind: "voidRefund"; contractId: number; refund: { id: number; amount: number; paidOn: Date; mode: PaymentModeValue } }
     | null;
 
 // DATE columns arrive as midnight UTC, so the first 10 characters are the day.
@@ -138,13 +142,19 @@ export function ContractsSection({ order, contracts, leaveDays, nextContract, to
                                         }
                                     >
                                         {formatRupees(c.rate)}
+                                        {/* After End order: what is charged for the days served. */}
+                                        {c.charge !== null && c.charge !== c.rate && (
+                                            <p className="text-xs text-gray-500" title={`Rate ÷ 28 × ${c.servedDays} days served`}>
+                                                charged {formatRupees(c.charge)}
+                                            </p>
+                                        )}
                                     </td>
                                     <td className="py-2 pr-4">
                                         {/* Click = this contract's payment history (add / void there). */}
                                         <button
                                             type="button"
                                             onClick={() => setDialog({ kind: "payments", contractId: c.id })}
-                                            title={`${formatRupees(c.paidAmount)} paid · ${formatRupees(Math.max(0, c.rate - c.paidAmount))} due`}
+                                            title={`${formatRupees(c.paidAmount)} paid · ${formatRupees(balanceDue(contractAmountDue(c), c.paidAmount))} due`}
                                             className={`rounded-full px-2.5 py-0.5 text-xs font-bold hover:ring-2 hover:ring-gray-300 ${PAYMENT_STATUS_STYLES[c.paymentStatus].className}`}
                                         >
                                             {PAYMENT_STATUS_STYLES[c.paymentStatus].label}
@@ -152,7 +162,8 @@ export function ContractsSection({ order, contracts, leaveDays, nextContract, to
                                     </td>
                                     <td className="py-2 pr-4">{c.fullyPaidOn ? formatDate(c.fullyPaidOn) : "—"}</td>
                                     <td className="py-2 text-right whitespace-nowrap">
-                                        {!isEnded && c.paymentStatus !== "FULLY_PAID" && (
+                                        {/* Payments continue after End order, up to the charge. */}
+                                        {c.paymentStatus !== "FULLY_PAID" && (
                                             <Button
                                                 variant="ghost"
                                                 size="sm"
@@ -160,6 +171,18 @@ export function ContractsSection({ order, contracts, leaveDays, nextContract, to
                                             >
                                                 <Plus className="w-4 h-4" />
                                                 Payment
+                                            </Button>
+                                        )}
+                                        {/* Ended and paid more than the charge: money to give back. */}
+                                        {refundDue(c) > 0 && (
+                                            <Button
+                                                variant="ghost"
+                                                size="sm"
+                                                className="text-amber-700"
+                                                onClick={() => setDialog({ kind: "addRefund", contractId: c.id, backTo: false })}
+                                            >
+                                                <Undo2 className="w-4 h-4" />
+                                                Refund {formatRupees(refundDue(c))}
                                             </Button>
                                         )}
                                         {/* Started by the nightly job with a copied rate, not yet checked by a person. */}
@@ -234,10 +257,33 @@ export function ContractsSection({ order, contracts, leaveDays, nextContract, to
             {dialog?.kind === "payments" && dialogContract && (
                 <ContractPaymentsDialog
                     contract={dialogContract}
-                    canChange={!isEnded}
+                    // Money can still be recorded and corrected after End order.
+                    canChange
                     onAdd={() => setDialog({ kind: "addPayment", contractId: dialogContract.id, backTo: true })}
                     onVoid={(p) => setDialog({ kind: "voidPayment", contractId: dialogContract.id, payment: p })}
+                    onAddRefund={() => setDialog({ kind: "addRefund", contractId: dialogContract.id, backTo: true })}
+                    onVoidRefund={(r) =>
+                        setDialog({
+                            kind: "voidRefund",
+                            contractId: dialogContract.id,
+                            refund: { id: r.id, amount: r.amount, paidOn: r.refundedOn, mode: r.mode },
+                        })
+                    }
                     onClose={() => setDialog(null)}
+                />
+            )}
+            {dialog?.kind === "addRefund" && dialogContract && (
+                <RecordRefundDialog
+                    contract={dialogContract}
+                    today={today}
+                    onClose={() => setDialog(dialog.backTo ? { kind: "payments", contractId: dialogContract.id } : null)}
+                />
+            )}
+            {dialog?.kind === "voidRefund" && (
+                <VoidPaymentDialog
+                    kind="refund"
+                    payment={dialog.refund}
+                    onClose={() => setDialog({ kind: "payments", contractId: dialog.contractId })}
                 />
             )}
             {dialog?.kind === "addPayment" && dialogContract && (

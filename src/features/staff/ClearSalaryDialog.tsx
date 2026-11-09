@@ -23,7 +23,7 @@ import {
 interface ClearSalaryDialogProps {
     staffId: number;
     staffName: string;
-    totals: { carried: number; earned: number; extras: number; paid: number; balance: number };
+    totals: { carried: number; earned: number; extras: number; recovered: number; paid: number; balance: number };
     onClose: () => void;
 }
 
@@ -75,12 +75,13 @@ export function ClearSalaryDialog({ staffId, staffName, totals, onClose }: Clear
         <Modal isOpen onClose={() => !isPending && onClose()} title={`Clear ${staffName}'s salary`} size="md">
             <form onSubmit={handleClear} className="space-y-5">
                 <div className="space-y-1 rounded-lg bg-gray-50 px-4 py-3 text-sm tabular-nums">
-                    {totals.carried !== 0 && line("Owed from last clearing", totals.carried, "−")}
+                    {totals.carried !== 0 && line("Amount from staff (last clearing)", totals.carried, "−")}
                     {line("Duty to settle", totals.earned, totals.earned < 0 ? "−" : "+")}
                     {totals.extras !== 0 && line("Earnings added", totals.extras, "+")}
+                    {totals.recovered !== 0 && line("Received / written off", totals.recovered, "+")}
                     {line("Already paid", totals.paid, "−")}
                     <div className="mt-2 flex justify-between border-t border-gray-200 pt-2 text-base font-bold">
-                        <span>{final >= 0 ? "Final amount to pay" : "Staff owes"}</span>
+                        <span>{final >= 0 ? "Final amount to pay" : "Amount from staff"}</span>
                         <span className={final < 0 ? "text-amber-700" : ""}>{formatRupees(Math.abs(final))}</span>
                     </div>
                 </div>
@@ -120,7 +121,7 @@ export function ClearSalaryDialog({ staffId, staffName, totals, onClose }: Clear
                     <p className="text-sm text-gray-600">
                         {final === 0
                             ? "Nothing is left to pay."
-                            : `Nothing to pay now. The ${formatRupees(-final)} ${staffName} owes is carried into the next period and comes off their next earnings.`}
+                            : `Nothing to pay now. The amount from staff (${formatRupees(-final)}) is carried into the next period and comes off ${staffName}'s next earnings.`}
                     </p>
                 )}
 

@@ -12,7 +12,7 @@ import {
     nextContractOpensOn,
 } from "@/server/domain/contract-dates";
 import { formatDayMonthYear, fromDayNumber, fromIsoDate, toDayNumber } from "@/server/domain/days";
-import { calculatePaymentStatus } from "@/server/domain/payments";
+import { calculatePaymentStatus, contractAmountDue, refundDue } from "@/server/domain/payments";
 import { formatRupees } from "@/lib/money";
 import { dutyPeriodsClash, isPaidDay, type DutyDayFacts, type DutyPeriodFacts } from "@/server/domain/duty";
 import { ForbiddenError, NotFoundError, ValidationError } from "@/server/domain/errors";
@@ -99,15 +99,27 @@ function statusOf(order: { endDate: Date | null; contracts: unknown[] }): OrderS
     return order.contracts.length === 0 ? "WAITING" : "ACTIVE";
 }
 
-/** A visible, not-ended order (or an error), with what write operations check. */
-export async function getVisibleOrderForUpdate(tx: Tx, user: AuthUser, orderId: number) {
+/**
+ * A visible, not-ended order (or an error), with what write operations check.
+ * `allowEnded`: payments and refunds still happen after an order ends (the
+ * customer pays what's left, or gets money back) -- nothing else does.
+ */
+export async function getVisibleOrderForUpdate(tx: Tx, user: AuthUser, orderId: number, { allowEnded = false } = {}) {
     const order = await tx.customerOrder.findFirst({
         where: { AND: [{ id: orderId }, visibleOrders(user)] },
         select: { id: true, code: true, branch: true, endDate: true, _count: { select: { contracts: true } } },
     });
     if (!order) throw new NotFoundError("Order not found");
-    if (order.endDate !== null) throw new ValidationError("This order has ended and can't be changed");
+    if (order.endDate !== null && !allowEnded) throw new ValidationError("This order has ended and can't be changed");
     return order;
+}
+
+/** Ended, but money still has to go back to the customer on some contract. */
+function hasRefundPending(order: {
+    endDate: Date | null;
+    contracts: { charge: number | null; paidAmount: number; refundedAmount: number }[];
+}): boolean {
+    return order.endDate !== null && order.contracts.some((c) => refundDue(c) > 0);
 }
 
 // ---------------------------------------------------------------------------
@@ -119,7 +131,14 @@ const ORDER_LIST_INCLUDE = {
     services: { include: { service: { select: { abbreviation: true } } } },
     contracts: {
         orderBy: { contractNumber: "asc" },
-        select: { contractNumber: true, startDate: true, endDate: true },
+        select: {
+            contractNumber: true,
+            startDate: true,
+            endDate: true,
+            charge: true,
+            paidAmount: true,
+            refundedAmount: true,
+        },
     },
     duties: { select: { startDate: true, endDate: true, staff: { select: { name: true } } } },
 } satisfies Prisma.CustomerOrderInclude;
@@ -132,6 +151,8 @@ export interface OrderListItem {
     code: string;
     branch: Branch;
     status: OrderStatusValue;
+    /** Ended, and a refund still has to be given (shown as "Ended – refund pending"). */
+    refundPending: boolean;
     customer: { id: number; name: string };
     serviceAbbreviations: string[];
     /** Whoever covers today, if anyone. */
@@ -157,6 +178,7 @@ function toListItem(order: OrderListRow, todayDay: number): OrderListItem {
         code: order.code,
         branch: order.branch,
         status: statusOf(order),
+        refundPending: hasRefundPending(order),
         customer: order.customer,
         serviceAbbreviations: order.services.map((link) => link.service.abbreviation),
         currentStaff: currentDuty?.staff.name ?? null,
@@ -236,17 +258,26 @@ const ORDER_DETAILS_INCLUDE = {
                 orderBy: [{ paidOn: "desc" }, { id: "desc" }],
                 include: { recordedBy: { select: { name: true } }, voidedBy: { select: { name: true } } },
             },
+            // Money given back after End order, newest first.
+            refunds: {
+                orderBy: [{ refundedOn: "desc" }, { id: "desc" }],
+                include: { recordedBy: { select: { name: true } }, voidedBy: { select: { name: true } } },
+            },
         },
     },
     duties: {
         orderBy: [{ startDate: "asc" }, { id: "asc" }],
         include: { staff: { select: { id: true, name: true, place: true, contactNumber: true } } },
     },
+    // The Restart links, both ways ("Restarted from K7QT" / "Restarted as M2PA").
+    restartedFrom: { select: { code: true, endDate: true } },
+    restartedAs: { select: { code: true, createdAt: true } },
 } satisfies Prisma.CustomerOrderInclude;
 
 /** Everything the order page shows. */
 export type OrderDetails = Prisma.CustomerOrderGetPayload<{ include: typeof ORDER_DETAILS_INCLUDE }> & {
     status: OrderStatusValue;
+    refundPending: boolean;
 };
 
 /** One order by its code, or null (missing -- or hidden from this user). */
@@ -256,7 +287,7 @@ export async function getOrderByCode(db: Db, user: AuthUser, code: string): Prom
         where: { AND: [{ code }, visibleOrders(user)] },
         include: ORDER_DETAILS_INCLUDE,
     });
-    return order ? { ...order, status: statusOf(order) } : null;
+    return order ? { ...order, status: statusOf(order), refundPending: hasRefundPending(order) } : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -273,7 +304,33 @@ async function assertServicesAllowed(tx: Tx, serviceIds: number[], alreadyLinked
     }
 }
 
-export async function createOrder(db: Db, user: AuthUser, input: OrderInput): Promise<{ code: string }> {
+/**
+ * The ended order a Restart continues -- checked: visible to this user,
+ * ended, same customer, and not restarted already (an order is restarted
+ * only once; the unique restartedFromId backs this up in the database).
+ */
+async function getOrderToRestart(db: Db, user: AuthUser, code: string, customerId: number) {
+    const old = await db.customerOrder.findFirst({
+        where: { AND: [{ code }, visibleOrders(user)] },
+        select: { id: true, code: true, customerId: true, endDate: true, restartedAs: { select: { code: true } } },
+    });
+    if (!old) throw new NotFoundError("The order to restart was not found");
+    if (old.endDate === null) throw new ValidationError(`Order ${old.code} is still running. Only an ended order can be restarted.`);
+    if (old.customerId !== customerId) throw new ValidationError("A restart must be for the same customer");
+    if (old.restartedAs) throw new ValidationError(`Order ${old.code} was already restarted as ${old.restartedAs.code}`);
+    return old;
+}
+
+/**
+ * A new order. With `restartFromCode` it is a Restart: a NEW order (own code,
+ * contracts from #1) linked to the ended one it continues.
+ */
+export async function createOrder(
+    db: Db,
+    user: AuthUser,
+    input: OrderInput,
+    restartFromCode: string | null = null,
+): Promise<{ code: string }> {
     assertRole(user, ORDER_MODULE_ROLES);
 
     // OUTSIDER: the branch field is hidden and the order is always Kerala --
@@ -286,6 +343,7 @@ export async function createOrder(db: Db, user: AuthUser, input: OrderInput): Pr
         throw new ValidationError("Orders can only be created for active customers");
     }
     await assertServicesAllowed(db, input.serviceIds);
+    const restartFrom = restartFromCode ? await getOrderToRestart(db, user, restartFromCode, input.customerId) : null;
 
     // A new random code, retried if it happens to exist already (the unique
     // index decides). With 810,000 possible codes a clash is rare.
@@ -297,12 +355,16 @@ export async function createOrder(db: Db, user: AuthUser, input: OrderInput): Pr
                     customerId: input.customerId,
                     branch,
                     remarks: input.remarks,
+                    restartedFromId: restartFrom?.id ?? null,
                     services: { create: input.serviceIds.map((serviceId) => ({ serviceId })) },
                 },
                 select: { code: true },
             });
         } catch (error) {
             if (!isPrismaError(error, "P2002")) throw error;
+            // The clash may be the restart link (someone restarted it at the same
+            // moment, e.g. another tab) rather than the random code -- say so.
+            if (restartFrom) await getOrderToRestart(db, user, restartFrom.code, input.customerId);
         }
     }
     throw new Error("Could not generate a unique order code");
@@ -409,7 +471,7 @@ async function assertDutyAllowed(
  * duty change, so the stored dates never disagree with the duty periods.
  * Contract #1 starts with the earliest duty period.
  */
-async function recalculateContracts(tx: Tx, orderId: number) {
+export async function recalculateContracts(tx: Tx, orderId: number) {
     const [duties, contracts] = await Promise.all([
         // Day parts too: NO_PAY first/last days are not served days.
         tx.staffAssignment.findMany({
@@ -710,9 +772,14 @@ export async function lockContractAndGetPaid(tx: Tx, contractId: number): Promis
 export async function recalculatePaymentStatus(tx: Tx, contractId: number): Promise<void> {
     const contract = await tx.contract.findUniqueOrThrow({
         where: { id: contractId },
-        select: { rate: true, payments: { select: { id: true, amount: true, paidOn: true, voidedAt: true } } },
+        select: {
+            rate: true,
+            charge: true,
+            payments: { select: { id: true, amount: true, paidOn: true, voidedAt: true } },
+        },
     });
-    const { status, paidAmount, fullyPaidOn } = calculatePaymentStatus(contract.rate, contract.payments);
+    // Compared with the charge once the order ended, else the rate.
+    const { status, paidAmount, fullyPaidOn } = calculatePaymentStatus(contractAmountDue(contract), contract.payments);
     await tx.contract.update({
         where: { id: contractId },
         data: { paymentStatus: status, paidAmount, fullyPaidOn },

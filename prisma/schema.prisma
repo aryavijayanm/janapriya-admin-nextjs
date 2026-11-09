@@ -41,6 +41,8 @@ model User {
   checkedContracts     Contract[] // contracts whose rate this user confirmed
   recordedPayments     Payment[]           @relation("PaymentRecordedBy")
   voidedPayments       Payment[]           @relation("PaymentVoidedBy")
+  recordedRefunds      Refund[]            @relation("RefundRecordedBy")
+  voidedRefunds        Refund[]            @relation("RefundVoidedBy")
   recordedStaffEntries StaffAccountEntry[] @relation("StaffEntryRecordedBy")
   voidedStaffEntries   StaffAccountEntry[] @relation("StaffEntryVoidedBy")
   staffSettlements     StaffSettlement[]
@@ -98,6 +100,11 @@ model Staff {
   // and is computed when the page renders. Null = no photo (it's optional).
   photoKey                 String?
   status                   StaffStatus @default(ACTIVE)
+  // For the staff balances list ONLY (a fast look-up): the account balance
+  // estimated until yesterday (+ = owed to the staff, - = the staff owes).
+  // A stored copy, refreshed after every money change and by the nightly job.
+  // Paying and clearing never read it -- the staff account page calculates live.
+  balanceDue               Int         @default(0)
   created_at               DateTime    @default(now()) @db.Timestamptz
   updated_at               DateTime    @updatedAt @db.Timestamptz
 
@@ -105,6 +112,8 @@ model Staff {
   duties         StaffAssignment[]
   accountEntries StaffAccountEntry[]
   settlements    StaffSettlement[]
+
+  @@index([balanceDue])
 }
 
 // Join table for Staff <-> Service. Deliberately no is_active column here --
@@ -182,18 +191,25 @@ enum DayPart {
 
 // One booking of care for a customer. A customer can have several.
 model CustomerOrder {
-  id         Int       @id @default(autoincrement())
+  id              Int            @id @default(autoincrement())
   // 4 random consonants ("KXQT"), unique. Used in URLs and on screen instead
   // of the id, so OUTSIDE orders can't be found by guessing the next number.
-  code       String    @unique
-  customerId Int
-  customer   Customer  @relation(fields: [customerId], references: [id])
-  branch     Branch    @default(KERALA)
-  remarks    String?
-  // Set when the order is ended (step 2, with refunds). Null = still running.
-  endDate    DateTime? @db.Date
-  createdAt  DateTime  @default(now()) @db.Timestamptz
-  updatedAt  DateTime  @updatedAt @db.Timestamptz
+  code            String         @unique
+  customerId      Int
+  customer        Customer       @relation(fields: [customerId], references: [id])
+  branch          Branch         @default(KERALA)
+  remarks         String?
+  // Set by "End order": the last day of care. Null = still running.
+  endDate         DateTime?      @db.Date
+  // Why it ended ("Patient in hospital", "Family moved") -- optional.
+  endNote         String?
+  // "Restart": this order continues an ended one (new order, contracts from #1).
+  // Unique, so an ended order can be restarted only once.
+  restartedFromId Int?           @unique
+  restartedFrom   CustomerOrder? @relation("OrderRestart", fields: [restartedFromId], references: [id])
+  restartedAs     CustomerOrder? @relation("OrderRestart")
+  createdAt       DateTime       @default(now()) @db.Timestamptz
+  updatedAt       DateTime       @updatedAt @db.Timestamptz
 
   services  OrderService[]
   contracts Contract[]
@@ -248,7 +264,15 @@ model Contract {
   paidAmount      Int           @default(0)
   // The paidOn date of the payment that completed the rate. Null unless fully paid.
   fullyPaidOn     DateTime?     @db.Date
+  // Set by "End order": what the customer is charged for the days served
+  // (rate / 28 x servedDays, rounded down). Null = the full rate (running order).
+  // Paid status compares payments with this when set.
+  charge          Int?
+  // Total of the refunds recorded (voided ones don't count), kept like paidAmount.
+  // Refund due = paidAmount - charge - refundedAmount, worked out, never stored.
+  refundedAmount  Int           @default(0)
   payments        Payment[]
+  refunds         Refund[]
   createdAt       DateTime      @default(now()) @db.Timestamptz
   updatedAt       DateTime      @updatedAt @db.Timestamptz
 
@@ -292,6 +316,30 @@ model Payment {
   voidedAt       DateTime?   @db.Timestamptz
   voidedById     Int?
   voidedBy       User?       @relation("PaymentVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
+  voidReason     String?
+  createdAt      DateTime    @default(now()) @db.Timestamptz
+
+  @@index([contractId])
+}
+
+// Money given BACK to a customer after "End order" (they paid more than the
+// charge for the days served). Same rules as Payment: never edited, a
+// mistake is voided (kept, crossed out) and recorded again. Never more than
+// the refund due.
+model Refund {
+  id             Int         @id @default(autoincrement())
+  contractId     Int
+  contract       Contract    @relation(fields: [contractId], references: [id])
+  amount         Int // whole rupees, more than 0
+  refundedOn     DateTime    @db.Date
+  mode           PaymentMode // how it was given back (PAID_TO_STAFF not used)
+  accountDetails String?
+  remarks        String
+  recordedById   Int?
+  recordedBy     User?       @relation("RefundRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  voidedAt       DateTime?   @db.Timestamptz
+  voidedById     Int?
+  voidedBy       User?       @relation("RefundVoidedBy", fields: [voidedById], references: [id], onDelete: SetNull)
   voidReason     String?
   createdAt      DateTime    @default(now()) @db.Timestamptz
 
@@ -349,12 +397,17 @@ model StaffAssignment {
 
 // PAID: money given to the staff (salary, advance, recharge...) -- minus.
 // EXTRA: a one-time amount added for them (e.g. Rs 500 extra) -- plus.
+// RECEIVED: money the staff paid back to us -- plus (closes what they owe).
+// WRITE_OFF: what they owe, forgiven by the owner -- plus (closes it, no money moves).
+// RECEIVED and WRITE_OFF are allowed only while the staff owes, up to what they owe.
 enum StaffEntryType {
   PAID
   EXTRA
+  RECEIVED
+  WRITE_OFF
 }
 
-// How money was given to the staff (PAID entries only).
+// How money moved (PAID and RECEIVED entries only).
 enum StaffPaymentMode {
   CASH_OFFICE
   CASH_OWNER
@@ -370,12 +423,12 @@ model StaffAccountEntry {
   staffId        Int
   staff          Staff             @relation(fields: [staffId], references: [id])
   type           StaffEntryType
-  // Effect on the balance, whole rupees: PAID < 0, EXTRA > 0.
+  // Effect on the balance, whole rupees: PAID < 0; EXTRA, RECEIVED, WRITE_OFF > 0.
   amount         Int
   // The true date it happened (date of pay / of the extra), even if entered later.
   entryDate      DateTime          @db.Date
   remarks        String
-  mode           StaffPaymentMode? // PAID only
+  mode           StaffPaymentMode? // PAID and RECEIVED only
   accountDetails String?
   recordedById   Int?
   recordedBy     User?             @relation("StaffEntryRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
@@ -399,6 +452,7 @@ model StaffSettlement {
   clearedOn   DateTime            @db.Date
   earned      Int // duty differences paid in this clearing (can include minus rows)
   extras      Int // EXTRA entries settled in this clearing
+  recovered   Int                 @default(0) // RECEIVED + WRITE_OFF entries settled in this clearing
   paid        Int // PAID entries before the final payment (positive number)
   // What was paid to clear it. Negative = the staff owed this much; it opens the next period.
   finalAmount Int

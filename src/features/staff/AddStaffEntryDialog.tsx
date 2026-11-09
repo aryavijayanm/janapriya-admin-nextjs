@@ -9,29 +9,66 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { DateTextInput } from "@/components/ui/DateTextInput";
 import { parseDayMonthYear } from "@/lib/date";
+import { formatRupees } from "@/lib/money";
 import { useServerAction } from "@/hooks/useServerAction";
 import { RupeesInput } from "@/features/order/dutyFields";
 import { addStaffEntryAction } from "@/features/staff/staff.actions";
 import {
     STAFF_PAYMENT_MODES,
     STAFF_PAYMENT_MODE_LABELS,
+    STAFF_RECEIVED_MODES,
+    STAFF_RECEIVED_MODE_LABELS,
     STAFF_ENTRY_TYPE_LABELS,
     staffEntrySchema,
-    type StaffPaymentModeValue,
+    type StaffEntryTypeValue,
 } from "@/server/validators/staff-account";
 
+interface AddStaffEntryDialogProps {
+    staffId: number;
+    /** What the staff owes now (live balance); 0 when they don't owe. */
+    owes: number;
+    /** Owner only: may add a Write off. */
+    canWriteOff: boolean;
+    onClose: () => void;
+}
+
+const HINTS: Record<StaffEntryTypeValue, string> = {
+    PAID: "Salary, advance, recharge…",
+    EXTRA: "One-time amount added for them",
+    RECEIVED: "Money they paid back",
+    WRITE_OFF: "Forgive what they owe",
+};
+
 // "+ Add entry" on the staff account:
-//   Paid to staff -- salary, advance, mobile recharge, money they took... (needs "how")
-//   Earning       -- a one-time amount added for them (EXTRA); the contract salary stays as it is
-// The amount is always typed positive; the server stores the sign.
-export function AddStaffEntryDialog({ staffId, onClose }: { staffId: number; onClose: () => void }) {
-    const [type, setType] = useState<"PAID" | "EXTRA">("PAID");
+//   Paid to staff       -- salary, advance, mobile recharge, money they took... (needs "how")
+//   Earning             -- a one-time amount added for them (EXTRA); the contract salary stays as it is
+//   Received from staff -- only while they owe: money paid back (needs "how")
+//   Write off           -- only while they owe, Owner only: the debt forgiven
+// The amount is always typed positive; the server stores the sign. Received /
+// Write off can't be more than they owe (checked here and, for real, on the server).
+export function AddStaffEntryDialog({ staffId, owes, canWriteOff, onClose }: AddStaffEntryDialogProps) {
+    const types: StaffEntryTypeValue[] = [
+        "PAID",
+        "EXTRA",
+        ...(owes > 0 ? (["RECEIVED"] as const) : []),
+        ...(owes > 0 && canWriteOff ? (["WRITE_OFF"] as const) : []),
+    ];
+    const [type, setType] = useState<StaffEntryTypeValue>("PAID");
     const [amount, setAmount] = useState(Number.NaN);
     const [date, setDate] = useState("");
-    const [mode, setMode] = useState<StaffPaymentModeValue | "">("");
+    const [mode, setMode] = useState("");
     const [remarks, setRemarks] = useState("");
     const [accountDetails, setAccountDetails] = useState("");
     const { run, isPending, error, setError } = useServerAction();
+
+    const movesMoney = type === "PAID" || type === "RECEIVED";
+    const closesDebt = type === "RECEIVED" || type === "WRITE_OFF";
+
+    const chooseType = (value: StaffEntryTypeValue) => {
+        setType(value);
+        setMode(""); // the "how" lists differ by direction
+        setError("");
+    };
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
@@ -41,10 +78,13 @@ export function AddStaffEntryDialog({ staffId, onClose }: { staffId: number; onC
             setError("Please type the date as DD/MM/YYYY, e.g. 05/11/2026");
             return;
         }
-        const payload =
-            type === "PAID"
-                ? { type, amount, entryDate, remarks, mode, accountDetails }
-                : { type, amount, entryDate, remarks };
+        if (closesDebt && amount > owes) {
+            setError(`Amount from staff is only ${formatRupees(owes)}. Please check the amount.`);
+            return;
+        }
+        const payload = movesMoney
+            ? { type, amount, entryDate, remarks, mode, accountDetails }
+            : { type, amount, entryDate, remarks };
         // Same schema the server uses -- instant feedback here, the real check there.
         const check = staffEntrySchema.safeParse(payload);
         if (!check.success) {
@@ -61,46 +101,56 @@ export function AddStaffEntryDialog({ staffId, onClose }: { staffId: number; onC
             <form onSubmit={handleSubmit} className="space-y-5">
                 {/* What kind of line -- decides the column and the required boxes. */}
                 <div className="grid grid-cols-2 gap-2">
-                    {(
-                        [
-                            ["PAID", STAFF_ENTRY_TYPE_LABELS.PAID, "Salary, advance, recharge…"],
-                            ["EXTRA", STAFF_ENTRY_TYPE_LABELS.EXTRA, "One-time amount added for them"],
-                        ] as const
-                    ).map(([value, label, hint]) => (
+                    {types.map((value) => (
                         <button
                             key={value}
                             type="button"
-                            onClick={() => setType(value)}
+                            onClick={() => chooseType(value)}
                             className={`rounded-lg border px-3 py-2 text-left text-sm ${
                                 type === value ? "border-primary bg-primary/5 ring-2 ring-primary/30" : "border-gray-300"
                             }`}
                         >
-                            <p className="font-semibold text-gray-900">{label}</p>
-                            <p className="text-xs text-gray-500">{hint}</p>
+                            <p className="font-semibold text-gray-900">{STAFF_ENTRY_TYPE_LABELS[value]}</p>
+                            <p className="text-xs text-gray-500">{HINTS[value]}</p>
                         </button>
                     ))}
                 </div>
+
+                {closesDebt && (
+                    <p className="rounded-lg bg-amber-50 px-3 py-2 text-sm text-amber-800">
+                        Amount from staff now: <strong>{formatRupees(owes)}</strong>. You can enter up to this amount.
+                    </p>
+                )}
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <FormField label="Amount" htmlFor="entry-amount">
                         <RupeesInput id="entry-amount" value={amount} onChange={setAmount} />
                     </FormField>
-                    <FormField label={type === "PAID" ? "Date of pay" : "Date"} htmlFor="entry-date">
+                    <FormField
+                        label={type === "PAID" ? "Date of pay" : type === "RECEIVED" ? "Date received" : "Date"}
+                        htmlFor="entry-date"
+                    >
                         <DateTextInput id="entry-date" value={date} onChange={setDate} />
                     </FormField>
                 </div>
 
-                {type === "PAID" && (
-                    <FormField label="How it was paid" htmlFor="entry-mode">
-                        <Select id="entry-mode" value={mode} onChange={(e) => setMode(e.target.value as StaffPaymentModeValue)}>
+                {movesMoney && (
+                    <FormField label={type === "PAID" ? "How it was paid" : "How it was received"} htmlFor="entry-mode">
+                        <Select id="entry-mode" value={mode} onChange={(e) => setMode(e.target.value)}>
                             <option value="" disabled>
                                 Select…
                             </option>
-                            {STAFF_PAYMENT_MODES.map((m) => (
-                                <option key={m} value={m}>
-                                    {STAFF_PAYMENT_MODE_LABELS[m]}
-                                </option>
-                            ))}
+                            {type === "PAID"
+                                ? STAFF_PAYMENT_MODES.map((m) => (
+                                      <option key={m} value={m}>
+                                          {STAFF_PAYMENT_MODE_LABELS[m]}
+                                      </option>
+                                  ))
+                                : STAFF_RECEIVED_MODES.map((m) => (
+                                      <option key={m} value={m}>
+                                          {STAFF_RECEIVED_MODE_LABELS[m]}
+                                      </option>
+                                  ))}
                         </Select>
                     </FormField>
                 )}
@@ -111,11 +161,19 @@ export function AddStaffEntryDialog({ staffId, onClose }: { staffId: number; onC
                         maxLength={200}
                         value={remarks}
                         onChange={(e) => setRemarks(e.target.value)}
-                        placeholder={type === "PAID" ? "e.g. Salary, Advance, Mobile recharge" : "e.g. Festival extra"}
+                        placeholder={
+                            type === "PAID"
+                                ? "e.g. Salary, Advance, Mobile recharge"
+                                : type === "EXTRA"
+                                  ? "e.g. Festival extra"
+                                  : type === "RECEIVED"
+                                    ? "e.g. Paid back the advance"
+                                    : "e.g. Left due to illness, owner forgave"
+                        }
                     />
                 </FormField>
 
-                {type === "PAID" && (
+                {movesMoney && (
                     <FormField label="Account details (optional)" htmlFor="entry-account">
                         <Input
                             id="entry-account"

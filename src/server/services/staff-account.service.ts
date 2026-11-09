@@ -4,7 +4,7 @@ import type { Prisma, Role, StaffEntryType, StaffPaymentMode } from "@prisma/cli
 import type { Db } from "@/server/db/client";
 import { todayInKerala } from "@/server/domain/age";
 import { fromIsoDate, toDayNumber } from "@/server/domain/days";
-import { NotFoundError, ValidationError } from "@/server/domain/errors";
+import { ForbiddenError, NotFoundError, ValidationError } from "@/server/domain/errors";
 import {
     calculateDutyEarnings,
     calculateToSettle,
@@ -14,7 +14,7 @@ import {
 } from "@/server/domain/staff-earnings";
 import { formatRupees } from "@/lib/money";
 import { ALL_ROLES, assertRole, type AuthUser } from "@/server/services/authz";
-import type { ClearSalaryInput, StaffEntryInput } from "@/server/validators/staff-account";
+import { WRITE_OFF_ROLES, type ClearSalaryInput, type StaffEntryInput } from "@/server/validators/staff-account";
 
 // The staff account (step 3): a passbook per staff member.
 //
@@ -92,8 +92,12 @@ async function loadSettledState(db: Db | Tx, staffId: number) {
  * Everything To settle for one staff member: duty differences (all their duty
  * periods, any date -- that's what catches a late or corrected duty), the
  * entries not cleared yet, and what they owed at the last clearing.
+ *
+ * Counts duty up to TODAY (the account page and clearing), or -- with
+ * `estimate` -- up to YESTERDAY, the last day surely known (today's exit may
+ * not be entered yet), except days a clearing already paid.
  */
-async function loadToSettle(db: Db | Tx, staffId: number) {
+async function loadToSettle(db: Db | Tx, staffId: number, { estimate = false } = {}) {
     const [duties, settled, last, entries] = await Promise.all([
         db.staffAssignment.findMany({
             where: { staffId },
@@ -146,15 +150,26 @@ async function loadToSettle(db: Db | Tx, staffId: number) {
         for (const o of found) orders.get(o.id)!.branch = o.branch;
     }
 
+    // Estimate only: the last day each duty was paid up to, so it still counts.
+    let paidUpto: Map<number, number> | undefined;
+    if (estimate) {
+        paidUpto = new Map();
+        for (const s of settled) {
+            if (!s.settledTo) continue;
+            const day = toDayNumber(s.settledTo);
+            paidUpto.set(s.dutyId, Math.max(day, paidUpto.get(s.dutyId) ?? day));
+        }
+    }
     const now = calculateDutyEarnings(
         duties.map((d) => ({ ...d, dutyId: d.id })),
         contractsByOrder,
-        todayDay(),
+        estimate ? todayDay() - 1 : todayDay(),
+        paidUpto,
     );
     const rows = calculateToSettle(now, settled);
     const carried = last && last.finalAmount < 0 ? last.finalAmount : 0;
     const earned = rows.reduce((sum, r) => sum + r.amount, 0);
-    const { extras, paid } = entryTotals(entries);
+    const { extras, recovered, paid } = entryTotals(entries);
 
     return {
         rows,
@@ -163,22 +178,46 @@ async function loadToSettle(db: Db | Tx, staffId: number) {
         carried,
         earned,
         extras,
+        recovered,
         paid,
-        balance: carried + earned + extras - paid,
+        balance: carried + earned + extras + recovered - paid,
         lastClearedOn: last?.clearedOn ?? null,
     };
 }
 
-/** Totals of a set of entries (voided ones never count). */
+/**
+ * The balance for the staff balances list: the same calculation as the
+ * account page, counted until yesterday (see loadToSettle). Look-up only --
+ * paying always goes through the account page.
+ */
+export async function estimateStaffBalance(db: Db, staffId: number): Promise<number> {
+    return (await loadToSettle(db, staffId, { estimate: true })).balance;
+}
+
+/**
+ * Totals of a set of entries (voided ones never count):
+ *   extras    -- EXTRA (earnings added)
+ *   recovered -- RECEIVED + WRITE_OFF (what the staff owed, paid back or forgiven)
+ *   paid      -- PAID, as a positive number
+ */
 function entryTotals(entries: { type: StaffEntryType; amount: number; voidedAt: Date | null }[]) {
     let extras = 0;
+    let recovered = 0;
     let paid = 0;
     for (const e of entries) {
         if (e.voidedAt !== null) continue;
         if (e.type === "PAID") paid += -e.amount;
-        else extras += e.amount;
+        else if (e.type === "EXTRA") extras += e.amount;
+        else recovered += e.amount;
     }
-    return { extras, paid };
+    return { extras, recovered, paid };
+}
+
+/** Only the Owner may forgive money -- adding or voiding a WRITE_OFF. */
+function assertMayWriteOff(user: AuthUser) {
+    if (!(WRITE_OFF_ROLES as readonly Role[]).includes(user.role)) {
+        throw new ForbiddenError("Only the owner can write off an amount from staff");
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -228,6 +267,7 @@ export interface ClearedPeriodView {
     carried: number;
     earned: number;
     extras: number;
+    recovered: number;
     paid: number;
     finalAmount: number;
     rows: DutyRowView[];
@@ -242,10 +282,13 @@ export interface StaffAccount {
         entries: StaffEntryView[];
         earned: number;
         extras: number;
+        recovered: number;
         paid: number;
         balance: number;
         lastClearedOn: Date | null;
     };
+    /** This user may add/void a Write off (Owner only). */
+    canWriteOff: boolean;
     cleared: ClearedPeriodView[];
     page: number;
     totalPages: number;
@@ -315,6 +358,7 @@ export async function getStaffAccount(db: Db, user: AuthUser, staffId: number, p
         carried: Math.min(0, settlements[i + 1]?.finalAmount ?? 0),
         earned: s.earned,
         extras: s.extras,
+        recovered: s.recovered,
         paid: s.paid,
         finalAmount: s.finalAmount,
         rows: s.settledDuty.map((d) =>
@@ -336,10 +380,12 @@ export async function getStaffAccount(db: Db, user: AuthUser, staffId: number, p
             entries: open.entries,
             earned: open.earned,
             extras: open.extras,
+            recovered: open.recovered,
             paid: open.paid,
             balance: open.balance,
             lastClearedOn: open.lastClearedOn,
         },
+        canWriteOff: (WRITE_OFF_ROLES as readonly Role[]).includes(user.role),
         cleared,
         page: current,
         totalPages,
@@ -350,13 +396,35 @@ export async function getStaffAccount(db: Db, user: AuthUser, staffId: number, p
 // Changing: add, void, clear
 // ---------------------------------------------------------------------------
 
-/** "+ Add entry": PAID (stored minus) or EXTRA (stored plus). */
+/**
+ * "+ Add entry": PAID (stored minus), EXTRA, RECEIVED or WRITE_OFF (stored plus).
+ *
+ * RECEIVED and WRITE_OFF only close a debt: allowed while the staff owes, and
+ * at most what they owe -- so a typo (₹20,000 for ₹2,000) can never turn into
+ * money the agency "owes" and pays out. Checked against the LIVE balance
+ * (until today, as on the account page), inside the staff lock, so two tabs
+ * can't both use the same debt.
+ */
 export async function addStaffEntry(db: Db, user: AuthUser, staffId: number, input: StaffEntryInput): Promise<void> {
     assertRole(user, STAFF_ACCOUNT_ROLES);
+    if (input.type === "WRITE_OFF") assertMayWriteOff(user);
     assertNotFuture(input.entryDate, input.type === "PAID" ? "The date of pay" : "The date");
+    const closesDebt = input.type === "RECEIVED" || input.type === "WRITE_OFF";
+    const movesMoney = input.type === "PAID" || input.type === "RECEIVED";
 
     await db.$transaction(async (tx) => {
         await lockStaff(tx, staffId);
+
+        if (closesDebt) {
+            const owes = -(await loadToSettle(tx, staffId)).balance;
+            if (owes <= 0) {
+                throw new ValidationError("There is no amount from staff right now.");
+            }
+            if (input.amount > owes) {
+                throw new ValidationError(`Amount from staff is only ${formatRupees(owes)}. Please check the amount.`);
+            }
+        }
+
         await tx.staffAccountEntry.create({
             data: {
                 staffId,
@@ -364,8 +432,8 @@ export async function addStaffEntry(db: Db, user: AuthUser, staffId: number, inp
                 amount: input.type === "PAID" ? -input.amount : input.amount,
                 entryDate: fromIsoDate(input.entryDate),
                 remarks: input.remarks,
-                mode: input.type === "PAID" ? (input.mode as StaffPaymentMode) : null,
-                accountDetails: input.type === "PAID" ? input.accountDetails : null,
+                mode: movesMoney ? (input.mode as StaffPaymentMode) : null,
+                accountDetails: movesMoney ? input.accountDetails : null,
                 recordedById: user.id,
             },
         });
@@ -379,9 +447,11 @@ export async function voidStaffEntry(db: Db, user: AuthUser, entryId: number, re
     return db.$transaction(async (tx) => {
         const entry = await tx.staffAccountEntry.findUnique({
             where: { id: entryId },
-            select: { staffId: true, voidedAt: true, settlementId: true },
+            select: { staffId: true, type: true, voidedAt: true, settlementId: true },
         });
         if (!entry) throw new NotFoundError("Entry not found");
+        // Undoing a write off would un-forgive the debt: the owner's decision too.
+        if (entry.type === "WRITE_OFF") assertMayWriteOff(user);
         await lockStaff(tx, entry.staffId);
         if (entry.settlementId !== null) {
             throw new ValidationError("This entry is part of a cleared salary and can't be changed. Adjust it in the next payment.");
@@ -442,7 +512,7 @@ export async function clearStaffSalary(
         if (open.rows.length === 0 && open.entries.length === 0) {
             throw new ValidationError(
                 open.carried < 0
-                    ? `Nothing new to settle. The ${formatRupees(-open.carried)} the staff owes comes off their next earnings.`
+                    ? `Nothing new to settle. The amount from staff (${formatRupees(-open.carried)}) comes off their next earnings.`
                     : "There is nothing to settle",
             );
         }
@@ -463,6 +533,7 @@ export async function clearStaffSalary(
                 clearedOn: fromIsoDate(todayInKerala()),
                 earned: open.earned,
                 extras: open.extras,
+                recovered: open.recovered,
                 paid: open.paid,
                 finalAmount,
                 clearedById: user.id,

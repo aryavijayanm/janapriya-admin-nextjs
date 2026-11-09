@@ -123,6 +123,21 @@ export const contractMoneySchema = z.object({
     staffSalary: rupees("Staff salary"),
 });
 
+// --- End order ------------------------------------------------------------------
+// Someone on duty  -> lastDay + exitDayPart are required: their duty stops on
+//                     that day with that day part (the user's choice).
+// Nobody on duty   -> both are null: the order ends on the last duty day.
+// The server decides which applies (it knows whether anyone is on duty).
+
+export const endOrderSchema = z.object({
+    lastDay: dateField("Last day of care").nullable(),
+    exitDayPart: dayPart("last day").nullable(),
+    endNote: limitedText(NOTE_MAX_LENGTH, "The reason"),
+});
+
+/** "Restart": the ended order a new order continues (null = a normal new order). */
+export const restartFromSchema = orderCodeSchema.nullable();
+
 // --- The order list's URL -----------------------------------------------------
 // ?page=2&status=ACTIVE&branch=KERALA&search=rama
 // User-editable, so every field falls back (.catch) instead of throwing.
@@ -154,6 +169,7 @@ export type StartCareInput = z.infer<typeof startCareSchema>;
 export type UpdateDutyInput = z.infer<typeof updateDutySchema>;
 export type EditDutyInput = z.infer<typeof editDutySchema>;
 export type ContractMoneyInput = z.infer<typeof contractMoneySchema>;
+export type EndOrderInput = z.infer<typeof endOrderSchema>;
 export type OrderListQuery = z.infer<typeof orderListQuerySchema>;
 export type StaffPickerQuery = z.infer<typeof staffPickerQuerySchema>;
 export type OrderStatusValue = (typeof ORDER_STATUSES)[number];

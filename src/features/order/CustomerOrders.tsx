@@ -4,7 +4,7 @@ import Link from "next/link";
 import { ChevronRight, ClipboardList } from "lucide-react";
 import { formatDate } from "@/lib/date";
 import type { OrderListItem } from "@/server/services/order.service";
-import { BRANCH_STYLES, ORDER_STATUS_STYLES } from "@/features/order/orderTable";
+import { BRANCH_STYLES, orderStatusStyle } from "@/features/order/orderTable";
 
 // One customer's orders, as compact rows for the customer page. Each row opens
 // the order page. Same badges as the full order list (orderTable).
@@ -21,7 +21,7 @@ export function CustomerOrders({ orders }: { orders: OrderListItem[] }) {
     return (
         <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">
             {orders.map((order) => {
-                const status = ORDER_STATUS_STYLES[order.status];
+                const status = orderStatusStyle(order);
                 const branch = BRANCH_STYLES[order.branch];
                 const contract = order.currentContract;
                 return (
