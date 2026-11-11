@@ -117,10 +117,11 @@ export async function updateStaffAction(staffId: unknown, formData: FormData): P
     }
 
     if (result.kind === "saved") {
-        // The list and this person's details page both show this record, so
-        // both are refreshed. (The edit page reads fresh data each time.)
+        // The list, this person's profile and account pages (the shared
+        // header) all show this record, so all are refreshed. (The edit page
+        // reads fresh data each time.)
         revalidatePath("/staff");
-        revalidatePath(`/staff/${parsedId.data}`);
+        revalidatePath(`/staff/${parsedId.data}`, "layout");
     }
     return toSaveResult(result);
 }
@@ -187,6 +188,7 @@ export async function setStaffStatusAction(staffId: unknown, status: unknown): P
     }
 
     revalidatePath("/staff");
-    revalidatePath(`/staff/${parsedId.data}`);
+    // "layout": this person's profile AND account pages -- both show the header with the status.
+    revalidatePath(`/staff/${parsedId.data}`, "layout");
     return { ok: true };
 }

@@ -1,8 +1,8 @@
 "use client";
 
-import { Fragment, useState } from "react";
+import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ArrowLeft, Check, ChevronLeft, ChevronRight, Plus, Wallet } from "lucide-react";
+import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatDate, formatDateTime } from "@/lib/date";
 import { formatRupees } from "@/lib/money";
@@ -55,7 +55,7 @@ function Status({ settled }: { settled: boolean }) {
 // top. Each clearing is a block of Settled lines closed by a CLEARED line;
 // everything not paid yet -- new duty, late or corrected duty (plus or minus),
 // entries -- is under To settle at the bottom. Nothing is ever deleted.
-export function StaffAccount({ account }: { account: Account }) {
+export function StaffAccount({ account, header }: { account: Account; header: ReactNode }) {
     const { staff, toSettle, cleared, page, totalPages } = account;
     const [dialog, setDialog] = useState<
         { kind: "add" } | { kind: "clear" } | { kind: "void"; entry: StaffEntryView } | null
@@ -160,8 +160,8 @@ export function StaffAccount({ account }: { account: Account }) {
         ) : null;
 
     const clearedBand = (p: ClearedPeriodView) => (
-        <tr key={`c-${p.id}`} className="bg-gray-100">
-            <td colSpan={COLUMNS} className="px-3 py-2 text-sm font-semibold text-gray-700">
+        <tr key={`c-${p.id}`} className="bg-red-100">
+            <td colSpan={COLUMNS} className="px-3 py-2 text-sm font-semibold text-red-900">
                 ══ CLEARED {formatDate(p.clearedOn)} · earned {signedRupees(p.earned + p.extras)} · paid{" "}
                 {formatRupees(p.paid + Math.max(0, p.finalAmount))}
                 {p.recovered !== 0 && ` · received / written off ${formatRupees(p.recovered)}`}
@@ -182,17 +182,8 @@ export function StaffAccount({ account }: { account: Account }) {
 
     return (
         <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-md overflow-hidden">
-            {/* ===== Heading: staff name · place ===== */}
-            <div className="bg-linear-to-br from-pink-100 via-pink-50 to-purple-100 border-b border-gray-200 px-4 py-4 sm:px-8 sm:py-5">
-                <Link href={`/staff/${staff.id}`} className="mb-2 inline-flex items-center gap-1 text-sm font-medium text-gray-700 hover:text-primary">
-                    <ArrowLeft className="w-4 h-4" />
-                    Back to staff
-                </Link>
-                <h1 className="flex items-center gap-2 text-2xl sm:text-3xl font-extrabold tracking-tight text-gray-900">
-                    <Wallet className="w-7 h-7 text-primary" />
-                    {staff.name} · {staff.place}
-                </h1>
-            </div>
+            {/* ===== The shared staff header (same as the profile page) ===== */}
+            {header}
 
             <div className="px-4 py-4 sm:px-8 sm:py-6 space-y-4">
                 {page < totalPages && (

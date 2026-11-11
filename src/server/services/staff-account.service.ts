@@ -34,8 +34,8 @@ type Tx = Prisma.TransactionClient;
 /** Everyone may view, add, void and clear (owner's decision). */
 const STAFF_ACCOUNT_ROLES: Role[] = [...ALL_ROLES];
 
-/** Cleared periods per page: page 1 = the latest 3. */
-const CLEARINGS_PER_PAGE = 3;
+/** Cleared periods per page: page 1 = the latest 7. */
+const CLEARINGS_PER_PAGE = 7;
 
 function todayDay(): number {
     return toDayNumber(fromIsoDate(todayInKerala()));
