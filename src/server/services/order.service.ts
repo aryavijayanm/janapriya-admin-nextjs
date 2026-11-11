@@ -272,6 +272,8 @@ const ORDER_DETAILS_INCLUDE = {
     // The Restart links, both ways ("Restarted from K7QT" / "Restarted as M2PA").
     restartedFrom: { select: { code: true, endDate: true } },
     restartedAs: { select: { code: true, createdAt: true } },
+    // The Owner's write-off, if any ("Written off ₹5,000 on ... by ...").
+    writeOff: { include: { recordedBy: { select: { name: true } } } },
 } satisfies Prisma.CustomerOrderInclude;
 
 /** Everything the order page shows. */
@@ -775,6 +777,7 @@ export async function recalculatePaymentStatus(tx: Tx, contractId: number): Prom
         select: {
             rate: true,
             charge: true,
+            writtenOffAmount: true,
             payments: { select: { id: true, amount: true, paidOn: true, voidedAt: true } },
         },
     });

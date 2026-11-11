@@ -18,6 +18,7 @@ import { orderCodeSchema } from "@/server/validators/order";
  *   nextContract -- whether "Start next contract" is open yet, and from when
  *   leaveDays    -- per contract id, days not counted (no paid staff)
  *   today        -- Kerala's date, for the dialogs' date boxes
+ *   canWriteOff  -- Owner: the Write off button may show
  *
  * The whole history is loaded even when a page shows only part of it: gaps and
  * leave days need every duty period, and even a years-long order is small.
@@ -48,7 +49,10 @@ export async function loadOrderPage(rawCode: string) {
         order.contracts.map((c) => [c.id, notCountedDays(c, fromIsoDate(today))]),
     );
 
-    return { order, gaps, nextContract, leaveDays, today };
+    // Showing the Write off button is a convenience; the service checks the role again.
+    const canWriteOff = user.role === "OWNER";
+
+    return { order, gaps, nextContract, leaveDays, today, canWriteOff };
 }
 
 /** ?page=2 -> 2; anything odd -> 1 (latestPage() then clamps it to the last page). */

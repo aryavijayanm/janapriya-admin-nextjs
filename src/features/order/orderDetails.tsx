@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
     ArrowLeft,
+    Ban,
     CalendarPlus,
     Hash,
     MapPin,
@@ -20,13 +21,16 @@ import {
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { formatDate } from "@/lib/date";
+import { formatRupees } from "@/lib/money";
 import { latestPage } from "@/lib/latestPage";
+import { balanceDue, contractAmountDue } from "@/server/domain/payments";
 import { formatCustomerCode } from "@/server/validators/customer";
 import type { OrderDetails as Order } from "@/server/services/order.service";
 import type { CoverageGap } from "@/server/domain/duty";
 import { BRANCH_STYLES, orderStatusStyle } from "@/features/order/orderTable";
 import { EndOrderDialog } from "@/features/order/EndOrderDialog";
 import { UndoEndOrderDialog } from "@/features/order/UndoEndOrderDialog";
+import { WriteOffOrderDialog } from "@/features/order/WriteOffOrderDialog";
 import { SectionCard } from "@/features/order/SectionCard";
 import { ContractsSection } from "@/features/order/ContractsSection";
 import { DutySection } from "@/features/order/DutySection";
@@ -46,6 +50,8 @@ interface OrderDetailsProps {
     leaveDays: Record<number, number | null>;
     /** Kerala's today, yyyy-mm-dd. */
     today: string;
+    /** Owner: may write off an ended order's unpaid balance. */
+    canWriteOff: boolean;
 }
 
 function FactChip({ icon: Icon, children }: { icon: LucideIcon; children: React.ReactNode }) {
@@ -60,17 +66,24 @@ function FactChip({ icon: Icon, children }: { icon: LucideIcon; children: React.
 // The order page: header, services, remarks, then the latest contracts and
 // duty periods. The contract table and duty timeline are shared components
 // (with their own buttons and dialogs), also used by the "view all" pages.
-export default function OrderDetails({ order, gaps, nextContract, leaveDays, today }: OrderDetailsProps) {
+export default function OrderDetails({ order, gaps, nextContract, leaveDays, today, canWriteOff }: OrderDetailsProps) {
     const router = useRouter();
     const [startingCare, setStartingCare] = useState(false);
-    const [dialog, setDialog] = useState<"end" | "undoEnd" | null>(null);
+    const [dialog, setDialog] = useState<"end" | "undoEnd" | "writeOff" | null>(null);
 
     const status = orderStatusStyle(order);
     const branch = BRANCH_STYLES[order.branch];
     const isEnded = order.status === "ENDED";
     const hasStarted = order.contracts.length > 0;
-    // Undo end only until money has gone back, and never once restarted (the server checks too).
-    const canUndoEnd = isEnded && !order.restartedAs && order.contracts.every((c) => c.refundedAmount === 0);
+    // Undo end only until money has gone back or been written off, and never
+    // once restarted (the server checks too).
+    const canUndoEnd =
+        isEnded && !order.restartedAs && !order.writeOff && order.contracts.every((c) => c.refundedAmount === 0);
+    // What a write-off would cover: each contract's whole remaining balance.
+    const owing = order.contracts
+        .map((c) => ({ contractNumber: c.contractNumber, amount: balanceDue(contractAmountDue(c), c.paidAmount) }))
+        .filter((c) => c.amount > 0);
+    const showWriteOff = canWriteOff && isEnded && !order.writeOff && owing.length > 0;
     const onDutyNow = order.duties.find((d) => d.endDate === null) ?? null;
     const lastDutyDay = order.duties.reduce<Date | null>(
         (latest, d) => (d.endDate && (!latest || d.endDate > latest) ? d.endDate : latest),
@@ -132,6 +145,15 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
                                     {order.endNote && <span className="font-normal text-gray-600"> — {order.endNote}</span>}
                                 </p>
                             )}
+                            {order.writeOff && (
+                                <p className="flex w-fit items-center gap-1.5 font-medium text-gray-700">
+                                    <Ban className="w-4 h-4 text-gray-500" />
+                                    Written off {formatRupees(order.writeOff.amount)} on {formatDate(order.writeOff.writtenOffOn)}
+                                    {" by "}
+                                    {order.writeOff.recordedBy?.name ?? "a removed user"}
+                                    <span className="font-normal text-gray-600"> — {order.writeOff.reason}</span>
+                                </p>
+                            )}
                             {order.restartedFrom && (
                                 <Link href={`/orders/${order.restartedFrom.code}`} className="flex w-fit items-center gap-1.5 text-primary hover:underline">
                                     <RotateCcw className="w-4 h-4" />
@@ -167,6 +189,17 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
                             <Button variant="secondary" size="sm" onClick={() => setDialog("undoEnd")}>
                                 <Undo2 className="w-4 h-4" />
                                 Undo end
+                            </Button>
+                        )}
+                        {showWriteOff && (
+                            <Button
+                                variant="secondary"
+                                size="sm"
+                                title="Owner only: the customer will never pay what's left"
+                                onClick={() => setDialog("writeOff")}
+                            >
+                                <Ban className="w-4 h-4" />
+                                Write off
                             </Button>
                         )}
                         {isEnded && !order.restartedAs && (
@@ -258,6 +291,15 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
                 />
             )}
             {dialog === "undoEnd" && <UndoEndOrderDialog orderId={order.id} code={order.code} onClose={() => setDialog(null)} />}
+            {dialog === "writeOff" && order.endDate && (
+                <WriteOffOrderDialog
+                    orderId={order.id}
+                    code={order.code}
+                    endDate={order.endDate}
+                    owing={owing}
+                    onClose={() => setDialog(null)}
+                />
+            )}
         </div>
     );
 }

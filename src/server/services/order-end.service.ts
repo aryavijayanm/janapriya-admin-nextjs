@@ -16,9 +16,9 @@ import {
     recalculatePaymentStatus,
 } from "@/server/services/order.service";
 import type { EndOrderInput } from "@/server/validators/order";
-import type { RefundInput } from "@/server/validators/payment";
+import type { RefundInput, WriteOffInput } from "@/server/validators/payment";
 
-// End order, Undo end and Refunds (step 2).
+// End order, Undo end, Refunds and Write off (step 2).
 //
 // End order, in ONE transaction:
 //   1. someone on duty -> their duty stops on the last day, with the exit day
@@ -36,6 +36,8 @@ type Tx = Prisma.TransactionClient;
 
 /** Everyone may end orders and record refunds (owner's decision); the branch rule applies. */
 const END_ORDER_ROLES: Role[] = [...ALL_ROLES];
+/** Writing off what a customer owes is the Owner's decision alone. */
+const WRITE_OFF_ROLES: Role[] = ["OWNER"];
 
 function todayDay(): number {
     return toDayNumber(fromIsoDate(todayInKerala()));
@@ -149,7 +151,15 @@ async function chargeContracts(tx: Tx, orderId: number, endDate: Date) {
     const after = await tx.contract.findMany({
         where: { id: { in: kept.map((c) => c.id) } },
         orderBy: { contractNumber: "asc" },
-        select: { contractNumber: true, servedDays: true, rate: true, charge: true, paidAmount: true, refundedAmount: true },
+        select: {
+            contractNumber: true,
+            servedDays: true,
+            rate: true,
+            charge: true,
+            writtenOffAmount: true,
+            paidAmount: true,
+            refundedAmount: true,
+        },
     });
     const summaries: EndedContractSummary[] = after.map((c) => ({
         contractNumber: c.contractNumber,
@@ -205,8 +215,8 @@ export async function endOrder(
 
 /**
  * "Undo end": for an order ended by mistake -- only while no refund has been
- * given (money already returned can't be un-returned) and it hasn't been
- * restarted. Charges are cleared and paid status goes back to the full rate.
+ * given (money already returned can't be un-returned), it hasn't been
+ * written off, and it hasn't been restarted. Charges are cleared and paid status goes back to the full rate.
  * The stopped duty stays stopped (start someone again with Update duty);
  * removed contracts are not brought back -- the next one is created again
  * when due (nightly job or the button).
@@ -220,6 +230,7 @@ export async function undoEndOrder(db: Db, user: AuthUser, orderId: number): Pro
             where: { id: orderId },
             select: {
                 restartedAs: { select: { code: true } },
+                writeOff: { select: { id: true } },
                 contracts: { select: { id: true, refundedAmount: true } },
             },
         });
@@ -229,6 +240,11 @@ export async function undoEndOrder(db: Db, user: AuthUser, orderId: number): Pro
         }
         if (details.contracts.some((c) => c.refundedAmount > 0)) {
             throw new ValidationError("A refund was already given on this order, so the end can't be undone");
+        }
+        // The write-off was worked out from the charges; reopening would bring
+        // back full rates on top of a final decision.
+        if (details.writeOff) {
+            throw new ValidationError("This order was written off, so the end can't be undone");
         }
 
         await tx.customerOrder.update({ where: { id: orderId }, data: { endDate: null, endNote: null } });
@@ -296,18 +312,57 @@ export async function recordRefund(db: Db, user: AuthUser, contractId: number, i
     });
 }
 
-/** Cancels a wrong refund. It stays in the history, crossed out, and stops counting. */
-export async function voidRefund(db: Db, user: AuthUser, refundId: number, reason: string): Promise<{ code: string }> {
-    assertRole(user, END_ORDER_ROLES);
+// ---------------------------------------------------------------------------
+// Write off (Owner only)
+// ---------------------------------------------------------------------------
+
+/**
+ * "Write off": the Owner's final decision that an ended order's unpaid
+ * balance will never be collected. Once per order, never undone. Every
+ * contract still owing gets its WHOLE remaining balance written off (one
+ * reason and date for all), so each one counts as settled. A refund due on
+ * another contract isn't touched -- that's money we still owe them.
+ *
+ * Example: #4 owes ₹2,000 and #5 owes ₹3,000 -> #4 written off ₹2,000,
+ * #5 written off ₹3,000, the order's write-off ₹5,000.
+ */
+export async function writeOffOrder(db: Db, user: AuthUser, orderId: number, input: WriteOffInput): Promise<{ code: string }> {
+    assertRole(user, WRITE_OFF_ROLES);
+    const writtenOffOn = fromIsoDate(input.writtenOffOn);
+    if (toDayNumber(writtenOffOn) > todayDay()) {
+        throw new ValidationError("The write-off date can't be in the future");
+    }
 
     return db.$transaction(async (tx) => {
-        const refund = await tx.refund.findUnique({ where: { id: refundId }, select: { contractId: true, voidedAt: true } });
-        if (!refund) throw new NotFoundError("Refund not found");
-        const { order } = await getContractForRefund(tx, user, refund.contractId);
-        if (refund.voidedAt !== null) throw new ValidationError("This refund is already voided");
+        const order = await getVisibleOrderForUpdate(tx, user, orderId, { allowEnded: true });
+        if (order.endDate === null) throw new ValidationError("Only an ended order can be written off. End the order first.");
+        if (toDayNumber(writtenOffOn) < toDayNumber(order.endDate)) {
+            throw new ValidationError(`The write-off date can't be before the order ended (${formatDayMonthYear(order.endDate)})`);
+        }
+        if (await tx.orderWriteOff.findUnique({ where: { orderId }, select: { id: true } })) {
+            throw new ValidationError("This order is already written off");
+        }
 
-        await tx.refund.update({ where: { id: refundId }, data: { voidedAt: new Date(), voidedById: user.id, voidReason: reason } });
-        await recalculateRefunded(tx, refund.contractId);
+        const contracts = await tx.contract.findMany({ where: { orderId }, orderBy: { contractNumber: "asc" }, select: { id: true } });
+        let total = 0;
+        for (const { id } of contracts) {
+            // Same row lock as payments: a payment can't slip in between.
+            const paidAmount = await lockContractAndGetPaid(tx, id);
+            const contract = await tx.contract.findUniqueOrThrow({
+                where: { id },
+                select: { rate: true, charge: true, writtenOffAmount: true },
+            });
+            const owed = balanceDue(contractAmountDue(contract), paidAmount);
+            if (owed === 0) continue;
+            await tx.contract.update({ where: { id }, data: { writtenOffAmount: contract.writtenOffAmount + owed } });
+            await recalculatePaymentStatus(tx, id);
+            total += owed;
+        }
+        if (total === 0) throw new ValidationError("Nothing to write off: every contract on this order is settled");
+
+        await tx.orderWriteOff.create({
+            data: { orderId, amount: total, writtenOffOn, reason: input.reason, recordedById: user.id },
+        });
         return { code: order.code };
     });
 }

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Info, Search } from "lucide-react";
 import { DataTable } from "@/components/ui/DataTable";
+import { FilterGroup } from "@/components/ui/FilterGroup";
 import { Input } from "@/components/ui/Input";
 import type { TableColumn } from "@/components/ui/Table";
 import { usePagination } from "@/hooks/usePagination";
@@ -22,41 +23,6 @@ interface StaffBalancesProps {
     rows: StaffBalanceRow[];
     pagination: PaginatedResult<StaffBalanceRow>["pagination"];
     query: StaffBalanceQuery;
-}
-
-/** A row of filter buttons; the chosen one is highlighted. */
-function FilterGroup<T extends string>({
-    label,
-    options,
-    labels,
-    value,
-    onChange,
-}: {
-    label: string;
-    options: readonly T[];
-    labels: Record<T, string>;
-    value: T;
-    onChange: (value: T) => void;
-}) {
-    return (
-        <div>
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">{label}</p>
-            <div className="inline-flex rounded-lg border border-gray-200 p-0.5">
-                {options.map((option) => (
-                    <button
-                        key={option}
-                        type="button"
-                        onClick={() => onChange(option)}
-                        className={`rounded-md px-3 py-1.5 text-sm font-medium ${
-                            value === option ? "bg-primary text-white" : "text-gray-600 hover:bg-gray-100"
-                        }`}
-                    >
-                        {labels[option]}
-                    </button>
-                ))}
-            </div>
-        </div>
-    );
 }
 
 // The staff balances look-up: who we owe and who owes us, from the stored

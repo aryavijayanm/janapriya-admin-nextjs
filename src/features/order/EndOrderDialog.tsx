@@ -173,7 +173,7 @@ export function EndOrderDialog({ orderId, code, onDuty, lastDutyDay, today, onCl
                 <p className="flex items-start gap-2 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-sm text-amber-800">
                     <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
                     Ending stops the duty and closes the order: no more duty or contract changes. Payments and refunds can
-                    still be recorded. It can be undone only until a refund is recorded.
+                    still be recorded, but not voided. It can be undone only until a refund or write-off is recorded.
                 </p>
 
                 <div className="flex justify-end gap-2">

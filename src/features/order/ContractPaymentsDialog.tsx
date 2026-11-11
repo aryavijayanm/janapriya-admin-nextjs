@@ -6,23 +6,23 @@ import { Modal } from "@/components/ui/Modal";
 import { Button } from "@/components/ui/Button";
 import { formatDate } from "@/lib/date";
 import { formatRupees } from "@/lib/money";
-import { PAYMENT_STATUS_STYLES } from "@/features/order/paymentStatus";
+import { paymentStatusStyle } from "@/features/order/paymentStatus";
 import { PAYMENT_MODE_LABELS } from "@/server/validators/payment";
 import { balanceDue, contractAmountDue, refundDue } from "@/server/domain/payments";
 import type { OrderDetails } from "@/server/services/order.service";
 
 type ContractWithPayments = OrderDetails["contracts"][number];
 type ContractPayment = ContractWithPayments["payments"][number];
-type ContractRefund = ContractWithPayments["refunds"][number];
 
 interface ContractPaymentsDialogProps {
     contract: ContractWithPayments;
-    /** False = history only, no adding or voiding. */
+    /** False = history only, no adding. */
     canChange: boolean;
+    /** Payments can be voided only while the order runs; after End order they're final. */
+    canVoid: boolean;
     onAdd: () => void;
     onVoid: (payment: ContractPayment) => void;
     onAddRefund: () => void;
-    onVoidRefund: (refund: ContractRefund) => void;
     onClose: () => void;
 }
 
@@ -99,17 +99,18 @@ function MoneyTable({ dateLabel, children }: { dateLabel: string; children: Reac
 
 // One contract's money history -- opened by clicking its Paid status pill.
 // Newest first. Voided rows stay, crossed out, with who/when/why. After End
-// order it also shows the charge for the days served and the refunds.
+// order it also shows the charge for the days served, the refunds and any
+// write-off; nothing can be voided any more then.
 export function ContractPaymentsDialog({
     contract,
     canChange,
+    canVoid,
     onAdd,
     onVoid,
     onAddRefund,
-    onVoidRefund,
     onClose,
 }: ContractPaymentsDialogProps) {
-    const status = PAYMENT_STATUS_STYLES[contract.paymentStatus];
+    const status = paymentStatusStyle(contract);
     const ended = contract.charge !== null;
     const due = balanceDue(contractAmountDue(contract), contract.paidAmount);
     const toRefund = refundDue(contract);
@@ -133,6 +134,9 @@ export function ContractPaymentsDialog({
                     {toRefund > 0 && (
                         <span>To refund <span className="font-semibold text-amber-700">{formatRupees(toRefund)}</span></span>
                     )}
+                    {contract.writtenOffAmount > 0 && (
+                        <span>Written off <span className="font-semibold">{formatRupees(contract.writtenOffAmount)}</span></span>
+                    )}
                     {contract.fullyPaidOn && <span>Fully paid on {formatDate(contract.fullyPaidOn)}</span>}
                 </div>
 
@@ -149,7 +153,7 @@ export function ContractPaymentsDialog({
                                 account={p.accountDetails}
                                 recordedBy={p.recordedBy?.name ?? null}
                                 voided={p.voidedAt ? { by: p.voidedBy?.name ?? null, on: p.voidedAt, reason: p.voidReason } : null}
-                                canVoid={canChange}
+                                canVoid={canVoid}
                                 onVoid={() => onVoid(p)}
                             />
                         ))}
@@ -170,8 +174,8 @@ export function ContractPaymentsDialog({
                                     account={r.accountDetails}
                                     recordedBy={r.recordedBy?.name ?? null}
                                     voided={r.voidedAt ? { by: r.voidedBy?.name ?? null, on: r.voidedAt, reason: r.voidReason } : null}
-                                    canVoid={canChange}
-                                    onVoid={() => onVoidRefund(r)}
+                                    canVoid={false}
+                                    onVoid={() => {}}
                                 />
                             ))}
                         </MoneyTable>

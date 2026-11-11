@@ -51,9 +51,13 @@ export function calculatePaymentStatus(rate: number, payments: PaymentFacts[]): 
     return { status, paidAmount: runningTotal, fullyPaidOn: status === "FULLY_PAID" ? fullyPaidOn : null };
 }
 
-/** What the customer must pay for a contract: the charge once the order ended, else the rate. */
-export function contractAmountDue(contract: { rate: number; charge: number | null }): number {
-    return contract.charge ?? contract.rate;
+/**
+ * What the customer must pay for a contract: the charge once the order ended,
+ * else the rate -- minus any part the Owner wrote off (which then counts as
+ * settled: nothing is left to collect).
+ */
+export function contractAmountDue(contract: { rate: number; charge: number | null; writtenOffAmount: number }): number {
+    return (contract.charge ?? contract.rate) - contract.writtenOffAmount;
 }
 
 /**

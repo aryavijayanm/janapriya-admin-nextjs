@@ -106,7 +106,7 @@ export function Sidebar({ user, isOpen }: SidebarProps) {
                         </h3>
                     )}
                     <div className="space-y-1">
-                        <MenuLink href="/payments" icon={CreditCard} label="View Payment" isOpen={isOpen} pathname={pathname} />
+                        <MenuLink href="/payments" icon={CreditCard} label="Payments" isOpen={isOpen} pathname={pathname} />
                     </div>
 
                     <div className="space-y-1">

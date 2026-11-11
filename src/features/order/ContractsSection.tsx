@@ -8,7 +8,7 @@ import type { OrderDetails as Order } from "@/server/services/order.service";
 import type { PaymentModeValue } from "@/server/validators/payment";
 import { SectionCard } from "@/features/order/SectionCard";
 import { formatRupees } from "@/lib/money";
-import { PAYMENT_STATUS_STYLES } from "@/features/order/paymentStatus";
+import { paymentStatusStyle } from "@/features/order/paymentStatus";
 import { ContractMoneyDialog, type ContractMoneyTarget } from "@/features/order/ContractMoneyDialog";
 import { DeleteContractDialog } from "@/features/order/DeleteContractDialog";
 import { AddPaymentDialog } from "@/features/order/AddPaymentDialog";
@@ -45,7 +45,6 @@ type OpenDialog =
           payment: { id: number; amount: number; paidOn: Date; mode: PaymentModeValue };
       }
     | { kind: "addRefund"; contractId: number; backTo: boolean }
-    | { kind: "voidRefund"; contractId: number; refund: { id: number; amount: number; paidOn: Date; mode: PaymentModeValue } }
     | null;
 
 // DATE columns arrive as midnight UTC, so the first 10 characters are the day.
@@ -155,9 +154,9 @@ export function ContractsSection({ order, contracts, leaveDays, nextContract, to
                                             type="button"
                                             onClick={() => setDialog({ kind: "payments", contractId: c.id })}
                                             title={`${formatRupees(c.paidAmount)} paid · ${formatRupees(balanceDue(contractAmountDue(c), c.paidAmount))} due`}
-                                            className={`rounded-full px-2.5 py-0.5 text-xs font-bold hover:ring-2 hover:ring-gray-300 ${PAYMENT_STATUS_STYLES[c.paymentStatus].className}`}
+                                            className={`rounded-full px-2.5 py-0.5 text-xs font-bold hover:ring-2 hover:ring-gray-300 ${paymentStatusStyle(c).className}`}
                                         >
-                                            {PAYMENT_STATUS_STYLES[c.paymentStatus].label}
+                                            {paymentStatusStyle(c).label}
                                         </button>
                                     </td>
                                     <td className="py-2 pr-4">{c.fullyPaidOn ? formatDate(c.fullyPaidOn) : "—"}</td>
@@ -257,18 +256,13 @@ export function ContractsSection({ order, contracts, leaveDays, nextContract, to
             {dialog?.kind === "payments" && dialogContract && (
                 <ContractPaymentsDialog
                     contract={dialogContract}
-                    // Money can still be recorded and corrected after End order.
+                    // Money can still be recorded after End order (up to the
+                    // charge), but no longer voided: it's final then.
                     canChange
+                    canVoid={!isEnded}
                     onAdd={() => setDialog({ kind: "addPayment", contractId: dialogContract.id, backTo: true })}
                     onVoid={(p) => setDialog({ kind: "voidPayment", contractId: dialogContract.id, payment: p })}
                     onAddRefund={() => setDialog({ kind: "addRefund", contractId: dialogContract.id, backTo: true })}
-                    onVoidRefund={(r) =>
-                        setDialog({
-                            kind: "voidRefund",
-                            contractId: dialogContract.id,
-                            refund: { id: r.id, amount: r.amount, paidOn: r.refundedOn, mode: r.mode },
-                        })
-                    }
                     onClose={() => setDialog(null)}
                 />
             )}
@@ -277,13 +271,6 @@ export function ContractsSection({ order, contracts, leaveDays, nextContract, to
                     contract={dialogContract}
                     today={today}
                     onClose={() => setDialog(dialog.backTo ? { kind: "payments", contractId: dialogContract.id } : null)}
-                />
-            )}
-            {dialog?.kind === "voidRefund" && (
-                <VoidPaymentDialog
-                    kind="refund"
-                    payment={dialog.refund}
-                    onClose={() => setDialog({ kind: "payments", contractId: dialog.contractId })}
                 />
             )}
             {dialog?.kind === "addPayment" && dialogContract && (

@@ -51,12 +51,15 @@ export const refundSchema = z.object({
     remarks: z.string().trim().min(1, "Please add remarks").max(200, "Remarks can be at most 200 characters"),
 });
 
-export const voidRefundSchema = z.object({
-    reason: z.string().trim().min(1, "Please give a reason for voiding this refund").max(200, "The reason is too long"),
-});
+// --- Write off (Owner only, after End order) ----------------------------------
 
-export const refundIdSchema = z.number().int().positive();
+export const writeOffSchema = z.object({
+    // Typed as DD/MM/YYYY on screen, sent as yyyy-mm-dd (parseDayMonthYear).
+    writtenOffOn: dateField("Write-off date"),
+    reason: z.string().trim().min(1, "Please give the reason for the write-off").max(200, "The reason can be at most 200 characters"),
+});
 
 export type PaymentInput = z.infer<typeof paymentSchema>;
 export type VoidPaymentInput = z.infer<typeof voidPaymentSchema>;
 export type RefundInput = z.infer<typeof refundSchema>;
+export type WriteOffInput = z.infer<typeof writeOffSchema>;

@@ -39,7 +39,7 @@ import {
     endOrder,
     recordRefund,
     undoEndOrder,
-    voidRefund,
+    writeOffOrder,
     type EndOrderSummary,
 } from "@/server/services/order-end.service";
 import { withStaffBalanceRefresh } from "@/server/services/staff-balance.service";
@@ -48,10 +48,9 @@ import type { Db } from "@/server/db/client";
 import {
     paymentIdSchema,
     paymentSchema,
-    refundIdSchema,
     refundSchema,
     voidPaymentSchema,
-    voidRefundSchema,
+    writeOffSchema,
 } from "@/server/validators/payment";
 
 /** Every order save returns the order's code, so the screen can show /orders/<code>. */
@@ -60,11 +59,14 @@ export type OrderSaveResult = { ok: true; code: string } | ActionFailure;
 /**
  * An order change can show up on any order page AND on its customer's page
  * (which lists their orders). "layout" refreshes the path and everything
- * under it: /orders, /orders/K7QT, /customer, /customer/42, ...
+ * under it: /orders, /orders/K7QT, /customer, /customer/42, ... The payments
+ * table and the dashboard's Payments card read the same contracts.
  */
 function refreshOrderPages() {
     revalidatePath("/orders", "layout");
     revalidatePath("/customer", "layout");
+    revalidatePath("/payments");
+    revalidatePath("/dashboard");
 }
 
 /**
@@ -245,13 +247,14 @@ export async function recordRefundAction(contractId: unknown, input: unknown): P
     return save(() => recordRefund(db, user, id.data, parsed.data));
 }
 
-export async function voidRefundAction(refundId: unknown, input: unknown): Promise<OrderSaveResult> {
+/** Owner only (checked in the service): writes off an ended order's unpaid balance. */
+export async function writeOffOrderAction(orderId: unknown, input: unknown): Promise<OrderSaveResult> {
     const { db, user } = await requireUser();
-    const id = refundIdSchema.safeParse(refundId);
+    const id = orderIdSchema.safeParse(orderId);
     if (!id.success) return invalidInput(id.error);
-    const parsed = voidRefundSchema.safeParse(input);
+    const parsed = writeOffSchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error);
-    return save(() => voidRefund(db, user, id.data, parsed.data.reason));
+    return save(() => writeOffOrder(db, user, id.data, parsed.data));
 }
 
 /** The staff picker's search, called while typing. Reads only -- nothing to refresh. */

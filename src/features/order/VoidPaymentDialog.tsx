@@ -8,20 +8,19 @@ import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
 import { formatDate } from "@/lib/date";
 import { formatRupees } from "@/lib/money";
-import { voidPaymentAction, voidRefundAction } from "@/features/order/order.actions";
+import { voidPaymentAction } from "@/features/order/order.actions";
 import { useServerAction } from "@/hooks/useServerAction";
 import { PAYMENT_MODE_LABELS, voidPaymentSchema, type PaymentModeValue } from "@/server/validators/payment";
 
 interface VoidPaymentDialogProps {
     payment: { id: number; amount: number; paidOn: Date; mode: PaymentModeValue };
-    /** "refund" = a refund (money given back), same rules and wording. */
-    kind?: "payment" | "refund";
     onClose: () => void;
 }
 
-// Voiding is the only way to correct a payment or a refund: it stays in the
-// history, crossed out with who/when/why, and stops counting. Then record it again.
-export function VoidPaymentDialog({ payment, kind = "payment", onClose }: VoidPaymentDialogProps) {
+// Voiding is the only way to correct a payment, and only while the order
+// runs: it stays in the history, crossed out with who/when/why, and stops
+// counting. Then record it again.
+export function VoidPaymentDialog({ payment, onClose }: VoidPaymentDialogProps) {
     const [reason, setReason] = useState("");
     const { run, isPending: isSubmitting, error, setError } = useServerAction();
 
@@ -31,14 +30,12 @@ export function VoidPaymentDialog({ payment, kind = "payment", onClose }: VoidPa
             setError(check.error.issues[0]?.message ?? "Please give a reason.");
             return;
         }
-        const result = await run(() =>
-            kind === "refund" ? voidRefundAction(payment.id, { reason }) : voidPaymentAction(payment.id, { reason }),
-        );
+        const result = await run(() => voidPaymentAction(payment.id, { reason }));
         if (result.ok) onClose();
     };
 
     return (
-        <Modal isOpen onClose={() => !isSubmitting && onClose()} title={`Void ${kind}`} size="sm">
+        <Modal isOpen onClose={() => !isSubmitting && onClose()} title="Void payment" size="sm">
             <div className="space-y-4">
                 <p className="text-sm text-gray-600">
                     Void <span className="font-semibold text-gray-900">{formatRupees(payment.amount)}</span> (
@@ -60,7 +57,7 @@ export function VoidPaymentDialog({ payment, kind = "payment", onClose }: VoidPa
                         Keep it
                     </Button>
                     <Button variant="danger" onClick={handleVoid} isLoading={isSubmitting}>
-                        Void {kind}
+                        Void payment
                     </Button>
                 </div>
                 {error && <Alert variant="error">{error}</Alert>}

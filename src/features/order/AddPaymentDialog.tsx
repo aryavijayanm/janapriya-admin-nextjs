@@ -28,7 +28,14 @@ export interface ExistingOrderPayment {
 }
 
 interface AddPaymentDialogProps {
-    contract: { id: number; contractNumber: number; rate: number; charge: number | null; paidAmount: number };
+    contract: {
+        id: number;
+        contractNumber: number;
+        rate: number;
+        charge: number | null;
+        writtenOffAmount: number;
+        paidAmount: number;
+    };
     /** Every payment on the order -- already loaded on the page, so the check costs no call. */
     orderPayments: ExistingOrderPayment[];
     /** Kerala's today, yyyy-mm-dd -- the latest allowed paid-on date. */

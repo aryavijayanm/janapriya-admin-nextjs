@@ -46,6 +46,7 @@ model User {
   recordedStaffEntries StaffAccountEntry[] @relation("StaffEntryRecordedBy")
   voidedStaffEntries   StaffAccountEntry[] @relation("StaffEntryVoidedBy")
   staffSettlements     StaffSettlement[]
+  orderWriteOffs       OrderWriteOff[]
 }
 
 // Database-backed sessions, deliberately not JWT: deleting a row revokes
@@ -214,6 +215,7 @@ model CustomerOrder {
   services  OrderService[]
   contracts Contract[]
   duties    StaffAssignment[]
+  writeOff  OrderWriteOff?
 
   @@index([customerId])
   @@index([branch])
@@ -271,6 +273,9 @@ model Contract {
   // Total of the refunds recorded (voided ones don't count), kept like paidAmount.
   // Refund due = paidAmount - charge - refundedAmount, worked out, never stored.
   refundedAmount  Int           @default(0)
+  // This contract's part of the order's write-off (see OrderWriteOff): what
+  // the customer will never pay. Amount due = (charge ?? rate) - writtenOffAmount.
+  writtenOffAmount Int          @default(0)
   payments        Payment[]
   refunds         Refund[]
   createdAt       DateTime      @default(now()) @db.Timestamptz
@@ -300,7 +305,8 @@ enum PaymentStatus {
 // One payment by a customer, against ONE contract. No orderId on purpose:
 // payment -> contract -> order is one join, and a second copy of the order
 // could disagree with the contract's. Never edited: a mistake is voided (it
-// stays, crossed out, with who/when/why) and recorded again.
+// stays, crossed out, with who/when/why) and recorded again -- only while the
+// order is running. After End order, money entries are final.
 model Payment {
   id             Int         @id @default(autoincrement())
   contractId     Int
@@ -323,9 +329,9 @@ model Payment {
 }
 
 // Money given BACK to a customer after "End order" (they paid more than the
-// charge for the days served). Same rules as Payment: never edited, a
-// mistake is voided (kept, crossed out) and recorded again. Never more than
-// the refund due.
+// charge for the days served). Never edited and never voided (money entries
+// are final after End order); never more than the refund due. The voided*
+// columns stay only for rows voided before that rule.
 model Refund {
   id             Int         @id @default(autoincrement())
   contractId     Int
@@ -344,6 +350,22 @@ model Refund {
   createdAt      DateTime    @default(now()) @db.Timestamptz
 
   @@index([contractId])
+}
+
+// The Owner's final decision that an ended order's unpaid balance will never
+// be collected. Once per order (orderId is unique), never edited, never undone.
+// It covers the whole remaining balance of every contract still owing; each
+// contract's part is kept in Contract.writtenOffAmount.
+model OrderWriteOff {
+  id           Int           @id @default(autoincrement())
+  orderId      Int           @unique
+  order        CustomerOrder @relation(fields: [orderId], references: [id])
+  amount       Int // total written off, whole rupees
+  writtenOffOn DateTime      @db.Date
+  reason       String
+  recordedById Int?
+  recordedBy   User?         @relation(fields: [recordedById], references: [id], onDelete: SetNull)
+  createdAt    DateTime      @default(now()) @db.Timestamptz
 }
 
 // One duty period: one staff member working on one order from a date, until a
