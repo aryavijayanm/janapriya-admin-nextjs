@@ -43,6 +43,8 @@ export function EndOrderDialog({ orderId, code, onDuty, lastDutyDay, today, onCl
     const [exitDayPart, setExitDayPart] = useState<DayPartValue | "">("");
     const [endNote, setEndNote] = useState("");
     const [summary, setSummary] = useState<EndOrderSummary | null>(null);
+    // The "can't end yet" popup -- on top, so it's seen without scrolling.
+    const [showBlocked, setShowBlocked] = useState(false);
     const preview = useServerAction();
     const save = useServerAction();
 
@@ -71,7 +73,10 @@ export function EndOrderDialog({ orderId, code, onDuty, lastDutyDay, today, onCl
             return;
         }
         const result = await preview.run(() => previewEndOrderAction(orderId, input));
-        if (result.ok) setSummary(result.summary);
+        if (result.ok) {
+            setSummary(result.summary);
+            setShowBlocked(result.summary.blockedReason !== null);
+        }
     };
 
     const handleEnd = async () => {
@@ -181,7 +186,13 @@ export function EndOrderDialog({ orderId, code, onDuty, lastDutyDay, today, onCl
                         Cancel
                     </Button>
                     {summary ? (
-                        <Button type="button" variant="danger" onClick={handleEnd} isLoading={save.isPending}>
+                        <Button
+                            type="button"
+                            variant="danger"
+                            onClick={handleEnd}
+                            isLoading={save.isPending}
+                            disabled={!!summary.blockedReason}
+                        >
                             End order
                         </Button>
                     ) : (
@@ -194,6 +205,23 @@ export function EndOrderDialog({ orderId, code, onDuty, lastDutyDay, today, onCl
                 {preview.error && <Alert variant="error">{preview.error}</Alert>}
                 {save.error && <Alert variant="error">{save.error}</Alert>}
             </form>
+
+            {/* A refund while another contract still owes: fix the payments first
+                (End order stays disabled; the server refuses too). Opened after the
+                End order dialog, so it shows on top of it. */}
+            {summary?.blockedReason && (
+                <Modal isOpen={showBlocked} onClose={() => setShowBlocked(false)} title="Can't end this order yet" size="sm">
+                    <div className="space-y-4">
+                        <p className="flex items-start gap-2 text-sm text-gray-700">
+                            <AlertTriangle className="w-5 h-5 shrink-0 text-red-600" />
+                            {summary.blockedReason}
+                        </p>
+                        <div className="flex justify-end">
+                            <Button onClick={() => setShowBlocked(false)}>OK</Button>
+                        </div>
+                    </div>
+                </Modal>
+            )}
         </Modal>
     );
 }

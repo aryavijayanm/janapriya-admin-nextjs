@@ -67,6 +67,44 @@ export interface EndOrderSummary {
     removed: number[];
     totalRefund: number;
     totalStillToPay: number;
+    /**
+     * Set when a contract still owes AND another has a refund: the order
+     * can't be ended like this (preview shows the table and this message;
+     * saving refuses). Null = fine to end.
+     */
+    blockedReason: string | null;
+}
+
+/** "#3" / "#2, #3" */
+const contractList = (cs: EndedContractSummary[]) => cs.map((c) => `#${c.contractNumber}`).join(", ");
+
+/**
+ * Pay-in-order at End order: we must never give money back while the same
+ * customer still owes on another contract. The fix is by hand, before
+ * ending: void the overpaid contract's payment and record it again, split so
+ * the older contract is paid first. (Always possible: a refund exists only
+ * because that contract has more paid than its charge.)
+ *
+ * e.g. #3 owes ₹1,000, #4 has ₹2,000 to refund ->
+ *   "Contract #3 still has ₹1,000 to pay, but #4 has ₹2,000 to refund. Move
+ *    ₹1,000 of #4's payment to #3 first (void it and record it again), then
+ *    end the order."
+ */
+function refundWhileOwing(contracts: EndedContractSummary[]): string | null {
+    const owing = contracts.filter((c) => c.stillToPay > 0);
+    const refunding = contracts.filter((c) => c.refund > 0);
+    if (owing.length === 0 || refunding.length === 0) return null;
+
+    const owed = owing.reduce((sum, c) => sum + c.stillToPay, 0);
+    const toRefund = refunding.reduce((sum, c) => sum + c.refund, 0);
+    const several = (cs: EndedContractSummary[]) => cs.length > 1;
+    return (
+        `${several(owing) ? "Contracts" : "Contract"} ${contractList(owing)} still ${several(owing) ? "have" : "has"} ` +
+        `${formatRupees(owed)} to pay, but ${contractList(refunding)} ${several(refunding) ? "have" : "has"} ` +
+        `${formatRupees(toRefund)} to refund. Move ${formatRupees(Math.min(owed, toRefund))} of ` +
+        `${several(refunding) ? `the payments on ${contractList(refunding)}` : `${contractList(refunding)}'s payment`} ` +
+        `to ${contractList(owing)} first (void it and record it again), then end the order.`
+    );
 }
 
 /** Thrown inside the transaction to roll the preview back, carrying its result out. */
@@ -203,8 +241,11 @@ export async function endOrder(
                 removed,
                 totalRefund: summaries.reduce((sum, c) => sum + c.refund, 0),
                 totalStillToPay: summaries.reduce((sum, c) => sum + c.stillToPay, 0),
+                blockedReason: refundWhileOwing(summaries),
             };
             if (preview) throw new PreviewRollback(summary); // undo everything above
+            // Throwing rolls the whole End order back.
+            if (summary.blockedReason) throw new ValidationError(summary.blockedReason);
             return summary;
         });
     } catch (error) {

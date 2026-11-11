@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Users, ClipboardList, ClipboardPlus, CreditCard, Banknote, LayoutDashboard, UserPlus, UserRoundCog, UserRoundPlus, ShieldCheck, type LucideIcon } from "lucide-react";
+import { Users, ClipboardList, ClipboardPlus, CreditCard, Banknote, LayoutDashboard, UserPlus, UserRoundCog, UserRoundPlus, Wallet, type LucideIcon } from "lucide-react";
 import type { AuthUser } from "@/server/services/authz";
 
 interface SidebarProps {
@@ -93,7 +93,7 @@ export function Sidebar({ user, isOpen }: SidebarProps) {
                     )}
                     <div className="space-y-1">
                         <MenuLink href="/staff/new" icon={UserRoundPlus} label="Add Staff" isOpen={isOpen} pathname={pathname} />
-                        <MenuLink href="/staff/active" icon={ShieldCheck} label="View Active Staff" isOpen={isOpen} pathname={pathname} />
+                        <MenuLink href="/staff/balances" icon={Wallet} label="View Staff Balances" isOpen={isOpen} pathname={pathname} />
                         <MenuLink href="/staff" icon={Users} label="View All Staff" isOpen={isOpen} pathname={pathname} />
                     </div>
                 </div>
