@@ -142,9 +142,13 @@ export const restartFromSchema = orderCodeSchema.nullable();
 // ?page=2&status=ACTIVE&branch=KERALA&search=rama
 // User-editable, so every field falls back (.catch) instead of throwing.
 
+/** The View orders status filter: one status, or ALL. No ?status= in the URL = ACTIVE (what staff look at most). */
+export const ORDER_STATUS_FILTERS = [...ORDER_STATUSES, "ALL"] as const;
+
 export const orderListQuerySchema = z.object({
     page: z.coerce.number().int().min(1).catch(1),
-    status: z.enum(ORDER_STATUSES).optional().catch(undefined),
+    // Missing or nonsense -> ACTIVE, so the list opens on the running orders.
+    status: z.enum(ORDER_STATUS_FILTERS).catch("ACTIVE"),
     branch: z.enum(BRANCHES).optional().catch(undefined),
     search: z.string().trim().max(100).optional().catch(undefined),
 });

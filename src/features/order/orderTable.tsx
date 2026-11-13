@@ -111,11 +111,12 @@ export default function OrderTable({ orders, pagination, canSeeOutside }: OrderT
             <div className="flex flex-col gap-3 mb-6 md:flex-row md:items-center">
                 <Select
                     aria-label="Filter by status"
-                    value={searchParams.get("status") ?? ""}
+                    // No status in the URL = Active (the server reads it the same way).
+                    value={searchParams.get("status") ?? "ACTIVE"}
                     onChange={(e) => setFilter("status", e.target.value)}
                     className="md:w-48"
                 >
-                    <option value="">All statuses</option>
+                    <option value="ALL">All statuses</option>
                     <option value="WAITING">Waiting to start</option>
                     <option value="ACTIVE">Active</option>
                     <option value="ENDED">Ended</option>

@@ -11,13 +11,8 @@ import { usePagination } from "@/hooks/usePagination";
 import { formatRupees } from "@/lib/money";
 import type { PaginatedResult } from "@/server/db/paginate";
 import type { StaffBalanceRow } from "@/server/services/staff-balance.service";
-import {
-    BALANCE_DUTY_FILTERS,
-    BALANCE_DUTY_LABELS,
-    BALANCE_MONEY_FILTERS,
-    BALANCE_MONEY_LABELS,
-    type StaffBalanceQuery,
-} from "@/server/validators/staff-balance";
+import { BALANCE_MONEY_FILTERS, BALANCE_MONEY_LABELS, type StaffBalanceQuery } from "@/server/validators/staff-balance";
+import { STAFF_DUTY_FILTERS, STAFF_DUTY_LABELS } from "@/server/validators/staff";
 
 interface StaffBalancesProps {
     rows: StaffBalanceRow[];
@@ -104,8 +99,8 @@ export function StaffBalances({ rows, pagination, query }: StaffBalancesProps) {
                     />
                     <FilterGroup
                         label="Duty"
-                        options={BALANCE_DUTY_FILTERS}
-                        labels={BALANCE_DUTY_LABELS}
+                        options={STAFF_DUTY_FILTERS}
+                        labels={STAFF_DUTY_LABELS}
                         value={query.duty}
                         onChange={(v) => setParam("duty", v, "all")}
                     />

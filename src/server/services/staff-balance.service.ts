@@ -5,7 +5,7 @@ import type { Db } from "@/server/db/client";
 import { paginate, type PaginatedResult } from "@/server/db/paginate";
 import { ALL_ROLES, assertRole, type AuthUser } from "@/server/services/authz";
 import { estimateStaffBalance } from "@/server/services/staff-account.service";
-import { staffSearchWhere } from "@/server/services/staff.service";
+import { OPEN_DUTY_SELECT, dutyFilterWhere, staffSearchWhere } from "@/server/services/staff.service";
 import type { StaffBalanceQuery } from "@/server/validators/staff-balance";
 
 // Staff balances: a FAST LOOK-UP of who we owe and who owes us, across all
@@ -151,8 +151,7 @@ export async function listStaffBalances(
     // doesn't disappear with them.
     const where: Prisma.StaffWhereInput = {
         balanceDue: money === "owed" ? { gt: 0 } : money === "owes" ? { lt: 0 } : { not: 0 },
-        ...(duty === "on" ? { duties: { some: { endDate: null } } } : {}),
-        ...(duty === "off" ? { duties: { none: { endDate: null } } } : {}),
+        ...dutyFilterWhere(duty),
         ...(search ? staffSearchWhere(search) : {}),
     };
     // Biggest amounts first when looking at one direction; by name otherwise.
@@ -178,7 +177,7 @@ export async function listStaffBalances(
                     place: true,
                     status: true,
                     balanceDue: true,
-                    duties: { where: { endDate: null }, select: { id: true }, take: 1 },
+                    duties: OPEN_DUTY_SELECT,
                 },
             }),
         page,

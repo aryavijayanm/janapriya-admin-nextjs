@@ -70,7 +70,20 @@ export const staffIdSchema = z.number().int().positive();
 export const staffStatusSchema = z.enum(STAFF_STATUSES);
 
 /**
- * The list page's URL: ?page=2&sortBy=age&sortDir=desc&serviceIds=1,3&search=kochi
+ * The Duty filter -- shared by View all staff and Staff balances.
+ * on = has an open duty period now; off = no open duty period.
+ */
+export const STAFF_DUTY_FILTERS = ["all", "on", "off"] as const;
+export type StaffDutyFilter = (typeof STAFF_DUTY_FILTERS)[number];
+
+export const STAFF_DUTY_LABELS: Record<StaffDutyFilter, string> = {
+    all: "All",
+    on: "On duty",
+    off: "Not on duty",
+};
+
+/**
+ * The list page's URL: ?page=2&sortBy=age&sortDir=desc&serviceIds=1,3&duty=off&search=kochi
  *
  * The URL is user-editable, so every field falls back to "not set" (.catch)
  * instead of throwing -- a mangled link still shows the list, it just ignores
@@ -88,6 +101,7 @@ export const staffListQuerySchema = z.object({
         .pipe(z.array(z.number().int().positive()))
         .optional()
         .catch(undefined),
+    duty: z.enum(STAFF_DUTY_FILTERS).catch("all"),
     search: z.string().trim().max(100).optional().catch(undefined),
 });
 

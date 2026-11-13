@@ -15,7 +15,7 @@ import { NotFoundError, ValidationError } from "@/server/domain/errors";
 import { fileStore } from "@/server/integrations/storage";
 import { ALL_ROLES, assertRole, type AuthUser } from "@/server/services/authz";
 import { newStaffPhotoKey, processStaffPhoto, type PhotoUpload } from "@/server/services/staff-photo";
-import type { StaffInput, StaffListQuery, StaffStatusValue } from "@/server/validators/staff";
+import type { StaffDutyFilter, StaffInput, StaffListQuery, StaffStatusValue } from "@/server/validators/staff";
 
 // Ported from the old NestJS StaffService, plus photos.
 
@@ -166,15 +166,36 @@ export function staffSearchWhere(search: string): Prisma.StaffWhereInput {
     };
 }
 
-/** One page of the staff list, with sort, service filter and search. */
+/**
+ * The Duty filter -- one rule for every staff list (View all staff, Staff
+ * balances). "On duty" = has an open duty period (endDate null).
+ *
+ * Prisma turns some/none into WHERE EXISTS / NOT EXISTS: per staff member it
+ * only asks "is there at least one open duty row?" (stopping at the first),
+ * using the StaffAssignment(staffId) index -- no rows are multiplied, and it
+ * stays fast as duty history grows.
+ */
+export function dutyFilterWhere(duty: StaffDutyFilter): Prisma.StaffWhereInput {
+    if (duty === "on") return { duties: { some: { endDate: null } } };
+    if (duty === "off") return { duties: { none: { endDate: null } } };
+    return {};
+}
+
+/** Loads at most ONE open duty row per staff member -- just enough to say "On duty". */
+export const OPEN_DUTY_SELECT = { where: { endDate: null }, select: { id: true }, take: 1 } satisfies Prisma.Staff$dutiesArgs;
+
+/** A staff list row: the staff member + whether they're on duty now. */
+export type StaffListRow = StaffWithServices & { onDuty: boolean };
+
+/** One page of the staff list, with sort, service and duty filters, and search. */
 export async function listStaff(
     db: Db,
     user: AuthUser,
     query: StaffListQuery,
-): Promise<PaginatedResult<StaffWithServices>> {
+): Promise<PaginatedResult<StaffListRow>> {
     assertRole(user, STAFF_MODULE_ROLES);
 
-    const { page, sortBy = "name", sortDir = "asc", serviceIds, search } = query;
+    const { page, sortBy = "name", sortDir = "asc", serviceIds, duty, search } = query;
 
     // Soft-deleted staff stay in the table (so past duty/order history keeps
     // resolving their name) but never appear in a normal list.
@@ -186,6 +207,7 @@ export async function listStaff(
         ...(serviceIds && serviceIds.length > 0
             ? { services: { some: { serviceId: { in: serviceIds } } } }
             : {}),
+        ...dutyFilterWhere(duty),
         // One search box across most text fields -- see staffSearchWhere.
         ...(search ? staffSearchWhere(search) : {}),
     };
@@ -196,13 +218,18 @@ export async function listStaff(
     // A unique second key makes every page's slice well-defined.
     const orderBy = [buildOrderBy(sortBy, sortDir), { id: "asc" as const }];
 
-    return paginate(
+    const result = await paginate(
         // count and findMany must share the same `where` or totalPages would
         // be computed against a different set than what's actually returned.
         () => db.staff.count({ where }),
-        (skip, take) => db.staff.findMany({ skip, take, where, orderBy, include: STAFF_INCLUDE }),
+        (skip, take) =>
+            db.staff.findMany({ skip, take, where, orderBy, include: { ...STAFF_INCLUDE, duties: OPEN_DUTY_SELECT } }),
         page,
     );
+    return {
+        pagination: result.pagination,
+        data: result.data.map(({ duties, ...s }) => ({ ...s, onDuty: duties.length > 0 })),
+    };
 }
 
 /**

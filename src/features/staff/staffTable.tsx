@@ -13,13 +13,15 @@ import { useSort } from "@/hooks/useSort";
 import { calculateAge } from "@/lib/date";
 import { setStaffStatusAction } from "@/features/staff/staff.actions";
 import { useServerAction } from "@/hooks/useServerAction";
-import type { StaffWithServices } from "@/server/services/staff.service";
+import { FilterGroup } from "@/components/ui/FilterGroup";
+import type { StaffListRow } from "@/server/services/staff.service";
 import type { PaginatedResult } from "@/server/db/paginate";
+import { STAFF_DUTY_FILTERS, STAFF_DUTY_LABELS, type StaffDutyFilter } from "@/server/validators/staff";
 import type { Service } from "@prisma/client";
 
 interface StaffTableProps {
-    staff: StaffWithServices[];
-    pagination: PaginatedResult<StaffWithServices>["pagination"];
+    staff: StaffListRow[];
+    pagination: PaginatedResult<StaffListRow>["pagination"];
     // Active services only -- the filter checkboxes.
     services: Service[];
 }
@@ -62,13 +64,25 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
         router.push(`?${params.toString()}`);
     };
 
-    const handleToggleStatus = async (s: StaffWithServices) => {
+    // Duty filter, also in the URL. Anything else in the URL reads as "all" (same as the server).
+    const dutyParam = searchParams.get("duty");
+    const duty: StaffDutyFilter = dutyParam === "on" || dutyParam === "off" ? dutyParam : "all";
+
+    const setDutyFilter = (value: StaffDutyFilter) => {
+        const params = new URLSearchParams(searchParams.toString());
+        if (value === "all") params.delete("duty");
+        else params.set("duty", value);
+        params.set("page", "1");
+        router.push(`?${params.toString()}`);
+    };
+
+    const handleToggleStatus = async (s: StaffListRow) => {
         setTogglingId(s.id);
         await run(() => setStaffStatusAction(s.id, s.status === "ACTIVE" ? "DISABLED" : "ACTIVE")); // a refusal shows as `error`
         setTogglingId(null);
     };
 
-    const columns: TableColumn<StaffWithServices>[] = [
+    const columns: TableColumn<StaffListRow>[] = [
         { header: "Name", accessor: "name", sortKey: "name" },
         { header: "Place", accessor: "place" },
         { header: "Contact", accessor: "contactNumber" },
@@ -91,6 +105,17 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
                     {s.status === "ACTIVE" ? "Active" : "Disabled"}
                 </span>
             ),
+        },
+        {
+            header: "Duty",
+            accessor: (s) =>
+                s.onDuty ? (
+                    <span className="inline-flex rounded-full bg-green-100 px-2.5 py-0.5 text-xs font-semibold text-green-700">
+                        {STAFF_DUTY_LABELS.on}
+                    </span>
+                ) : (
+                    <span className="text-gray-500">{STAFF_DUTY_LABELS.off}</span>
+                ),
         },
         {
             header: "Actions",
@@ -139,6 +164,15 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
             {/* Stacked on phones, side by side from lg: up (the old layout). */}
             <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-start lg:justify-between">
                 <h2 className="text-2xl font-bold text-gray-800">All Staff</h2>
+
+                {/* Same Duty filter as Staff balances (one shared list + component). */}
+                <FilterGroup
+                    label="Duty"
+                    options={STAFF_DUTY_FILTERS}
+                    labels={STAFF_DUTY_LABELS}
+                    value={duty}
+                    onChange={setDutyFilter}
+                />
 
                 <div>
                     <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
