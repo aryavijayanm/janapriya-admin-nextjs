@@ -20,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/ui/Alert";
+import { WhatsAppButton } from "@/components/ui/WhatsAppButton";
 import { formatDate } from "@/lib/date";
 import { setCustomerStatusAction } from "@/features/customer/customer.actions";
 import { useServerAction } from "@/hooks/useServerAction";
@@ -68,16 +69,20 @@ const STATUS_STYLES = {
     DELETED: { label: "Deleted", className: "bg-red-100 text-red-600" },
 } as const;
 
-// Phone numbers as tap-to-call links (useful when this page is opened on a phone).
+// Phone numbers as tap-to-call links (useful when this page is opened on a
+// phone), each followed by its "Try WhatsApp" button.
 function PhoneLink({ number }: { number: string }) {
     return (
-        <a
-            href={`tel:${number}`}
-            className="flex w-fit items-center gap-3 text-lg font-semibold text-gray-800 hover:text-primary transition-colors"
-        >
-            <Phone className="w-5 h-5 shrink-0 text-primary" />
-            {number}
-        </a>
+        <div className="flex flex-wrap items-center gap-3">
+            <a
+                href={`tel:${number}`}
+                className="flex w-fit items-center gap-3 text-lg font-semibold text-gray-800 hover:text-primary transition-colors"
+            >
+                <Phone className="w-5 h-5 shrink-0 text-primary" />
+                {number}
+            </a>
+            <WhatsAppButton phone={number} />
+        </div>
     );
 }
 

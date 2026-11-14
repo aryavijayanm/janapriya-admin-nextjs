@@ -47,6 +47,9 @@ model User {
   voidedStaffEntries   StaffAccountEntry[] @relation("StaffEntryVoidedBy")
   staffSettlements     StaffSettlement[]
   orderWriteOffs       OrderWriteOff[]
+  recordedAccountEntries AccountEntry[]    @relation("AccountEntryRecordedBy")
+  updatedAccountEntries  AccountEntry[]    @relation("AccountEntryUpdatedBy")
+  deletedAccountEntries  AccountEntry[]    @relation("AccountEntryDeletedBy")
 }
 
 // Database-backed sessions, deliberately not JWT: deleting a row revokes
@@ -326,6 +329,7 @@ model Payment {
   createdAt      DateTime    @default(now()) @db.Timestamptz
 
   @@index([contractId])
+  @@index([paidOn]) // the accounts book: by date
 }
 
 // Money given BACK to a customer after "End order" (they paid more than the
@@ -350,6 +354,7 @@ model Refund {
   createdAt      DateTime    @default(now()) @db.Timestamptz
 
   @@index([contractId])
+  @@index([refundedOn]) // the accounts book: by date
 }
 
 // The Owner's final decision that an ended order's unpaid balance will never
@@ -464,6 +469,7 @@ model StaffAccountEntry {
   createdAt      DateTime          @default(now()) @db.Timestamptz
 
   @@index([staffId, settlementId])
+  @@index([entryDate]) // the accounts book: by date
 }
 
 // One "Clear the salary now": the totals as agreed that day. Never undone.
@@ -518,4 +524,52 @@ model StaffSettledDuty {
 
   @@index([settlementId])
   @@index([staffId, dutyId, contractNumber])
+}
+
+// --- Accounts book ------------------------------------------------------------
+//
+// The day-by-day cash book. Customer payments, refunds and staff salary are
+// NOT copied here: the book reads them live from their own tables (one record,
+// one truth -- a voided payment shows crossed out by itself). This table holds
+// only what exists nowhere else: rent, food, water, office salaries, other income.
+
+enum AccountDirection {
+  IN
+  OUT
+}
+
+enum AccountEntryMode {
+  CASH_OFFICE
+  CASH_OWNER
+  ONLINE
+  OTHER
+}
+
+// Soft delete: a deleted entry stays in the database, hidden from the book.
+enum AccountEntryStatus {
+  ACTIVE
+  DELETED
+}
+
+// One hand-typed line of the accounts book. Editable and deletable by
+// everyone (owner's decision); who edited / deleted is kept, not shown.
+model AccountEntry {
+  id           Int                @id @default(autoincrement())
+  entryDate    DateTime           @db.Date
+  direction    AccountDirection
+  amount       Int // whole rupees, more than 0 (direction says in or out)
+  mode         AccountEntryMode
+  reason       String
+  status       AccountEntryStatus @default(ACTIVE)
+  recordedById Int?
+  recordedBy   User?              @relation("AccountEntryRecordedBy", fields: [recordedById], references: [id], onDelete: SetNull)
+  updatedById  Int?
+  updatedBy    User?              @relation("AccountEntryUpdatedBy", fields: [updatedById], references: [id], onDelete: SetNull)
+  deletedById  Int?
+  deletedBy    User?              @relation("AccountEntryDeletedBy", fields: [deletedById], references: [id], onDelete: SetNull)
+  deletedAt    DateTime?          @db.Timestamptz
+  createdAt    DateTime           @default(now()) @db.Timestamptz
+  updatedAt    DateTime           @updatedAt @db.Timestamptz
+
+  @@index([entryDate])
 }

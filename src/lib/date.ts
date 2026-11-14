@@ -59,6 +59,13 @@ export function parseDayMonthYear(text: string): string | null {
     return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === iso ? iso : null;
 }
 
+/** A yyyy-mm-dd date moved by whole days: shiftIsoDate("2026-11-01", -1) -> "2026-10-31". */
+export function shiftIsoDate(iso: string, days: number): string {
+    const date = new Date(`${iso}T00:00:00.000Z`);
+    date.setUTCDate(date.getUTCDate() + days);
+    return date.toISOString().slice(0, 10);
+}
+
 // yyyy-mm-dd, the only format <input type="date"> accepts as its value --
 // "en-CA" is just the locale that happens to format dates that way.
 export function toDateInputValue(value: string | Date): string {

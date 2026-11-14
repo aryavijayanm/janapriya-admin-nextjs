@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import { Users, ClipboardList, ClipboardPlus, CreditCard, Banknote, LayoutDashboard, UserPlus, UserRoundCog, UserRoundPlus, Wallet, type LucideIcon } from "lucide-react";
+import { BookOpen, Users, ClipboardList, ClipboardPlus, CreditCard, Banknote, LayoutDashboard, UserPlus, UserRoundCog, UserRoundPlus, Wallet, type LucideIcon } from "lucide-react";
 import type { AuthUser } from "@/server/services/authz";
 
 interface SidebarProps {
@@ -109,9 +109,12 @@ export function Sidebar({ user, isOpen }: SidebarProps) {
                         <MenuLink href="/payments" icon={CreditCard} label="Payments" isOpen={isOpen} pathname={pathname} />
                     </div>
 
-                    <div className="space-y-1">
-                        <MenuLink href="/salaries/add" icon={Banknote} label="Add Salary" isOpen={isOpen} pathname={pathname} />
-                    </div>
+                    {/* Everyone except OUTSIDER (the page and service refuse them too). */}
+                    {user.role !== "OUTSIDER" && (
+                        <div className="space-y-1">
+                            <MenuLink href="/accounts" icon={BookOpen} label="Accounts Book" isOpen={isOpen} pathname={pathname} />
+                        </div>
+                    )}
 
                     {isOwner && (
                         <div className="space-y-1">

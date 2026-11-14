@@ -8,6 +8,7 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/ui/Alert";
+import { WhatsAppButton } from "@/components/ui/WhatsAppButton";
 import { calculateAge, formatDate } from "@/lib/date";
 import { setStaffStatusAction } from "@/features/staff/staff.actions";
 import { useServerAction } from "@/hooks/useServerAction";
@@ -112,14 +113,17 @@ export function StaffHeader({ staff, photoUrl, current }: StaffHeaderProps) {
                             <MapPin className="w-5 h-5 shrink-0 text-primary" />
                             {staff.place}
                         </p>
-                        {/* A tel: link -- tapping it on a phone starts a call. */}
-                        <a
-                            href={`tel:${staff.contactNumber}`}
-                            className="flex w-fit items-center gap-3 text-lg font-semibold text-gray-800 hover:text-primary transition-colors"
-                        >
-                            <Phone className="w-5 h-5 shrink-0 text-primary" />
-                            {staff.contactNumber}
-                        </a>
+                        {/* A tel: link -- tapping it on a phone starts a call -- then Try WhatsApp. */}
+                        <div className="flex flex-wrap items-center gap-3">
+                            <a
+                                href={`tel:${staff.contactNumber}`}
+                                className="flex w-fit items-center gap-3 text-lg font-semibold text-gray-800 hover:text-primary transition-colors"
+                            >
+                                <Phone className="w-5 h-5 shrink-0 text-primary" />
+                                {staff.contactNumber}
+                            </a>
+                            <WhatsAppButton phone={staff.contactNumber} />
+                        </div>
                     </div>
 
                     <div className="mt-4 flex flex-wrap gap-2">
