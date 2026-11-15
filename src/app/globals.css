@@ -46,17 +46,6 @@
   background-attachment: fixed;
 }
 
-/* Dashboard card 4: two layers in one background (the first one listed is on
-   top). Layer 1: a round coral glow from the top-right corner, fading out by
-   75%. Layer 2: white for the top 40%, then easing into sky blue at the bottom.
-   Tailwind's gradient classes give one gradient per box, so two stacked ones
-   live here as a named utility -- used as "bg-glow-coral" (Card.tsx). */
-@utility bg-glow-coral {
-  background:
-    radial-gradient(at 100% 0%, color-mix(in oklab, var(--brand-coral) 55%, transparent), transparent 75%),
-    linear-gradient(to bottom, #ffffff 40%, var(--brand-sky));
-}
-
 /* The small number boxes inside every dashboard card ("Money to collect",
    "Receipts"...). See-through white so the card's colour shows through, plus
    a faint shadow and outline so they stay visible even where the card itself
@@ -78,10 +67,26 @@
   --color-brand-purple: var(--brand-purple);
   --color-brand-plum: var(--brand-plum);
   --color-brand-coral: var(--brand-coral);
+  --color-brand-sky: var(--brand-sky);
   --color-brand-peach: var(--brand-peach);
   /* Inter (loaded in app/layout.tsx), then system fonts while it loads. */
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, "Segoe UI", Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Consolas, monospace;
+
+  /* Opening animations (used by components/ui/Modal.tsx as
+     "motion-safe:animate-modal-in" / "motion-safe:animate-fade-in").
+     150ms: quick enough that nobody waits for it. Only opacity + transform,
+     which the GPU animates without re-laying out the page. */
+  --animate-modal-in: modal-in 250ms ease-out;
+  --animate-fade-in: fade-in 250ms ease-out;
+  @keyframes modal-in {
+    from { opacity: 0; transform: scale(0.95); }
+    to { opacity: 1; transform: scale(1); }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
 }
 
 @layer components {
@@ -108,6 +113,58 @@
   }
   .no-scrollbar::-webkit-scrollbar {
     display: none; /* older Chrome/Edge, Safari */
+  }
+}
+
+/* Dropdowns (<select>) everywhere: a light pink highlight in the open list
+   instead of the browser's blue. Uses the new "customizable select"
+   (appearance: base-select) -- Chrome/Edge only for now. @supports means
+   other browsers (Firefox, Safari) skip this block and keep their normal
+   list: nothing breaks, it just stays blue there. No component changes. */
+@supports (appearance: base-select) {
+  @layer base {
+    select,
+    ::picker(select) {
+      appearance: base-select;
+    }
+
+    /* The arrow: @tailwindcss/forms already draws one, so hide the second. */
+    select::picker-icon {
+      display: none;
+    }
+
+    /* The open list box. */
+    ::picker(select) {
+      margin-top: 4px;
+      padding: 4px;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.5rem;
+      background: #ffffff;
+      box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+    }
+
+    option {
+      padding: 6px 12px;
+      border-radius: 0.375rem;
+    }
+    /* The chosen one: light pink. */
+    option:checked {
+      background: color-mix(in oklab, var(--color-primary) 16%, white);
+      font-weight: 500;
+    }
+    /* Pointed at / moved to with the keyboard: the primary pink (same as
+       the primary buttons), white text so it stays readable.
+       After :checked on purpose, so it also wins on the chosen option. */
+    option:hover,
+    option:focus-visible {
+      background: var(--color-primary);
+      color: #ffffff;
+      outline: none;
+    }
+    /* The pink already marks the chosen option; no tick needed. */
+    option::checkmark {
+      display: none;
+    }
   }
 }
 

@@ -224,16 +224,43 @@ export async function listPayments(
 export interface PaymentsSummary {
     /** Orders with a contract not fully paid. */
     toCollect: number;
+    /** Owner only (else null): the total still to collect on those orders, in rupees. */
+    toCollectAmount: number | null;
     /** Owner only (else null): ended orders with money to give back. */
     toRefund: number | null;
 }
 
-/** The dashboard card: two counts, using the same conditions as the table's filters. */
+/** Who sees the total money to collect on the dashboard card. */
+const COLLECT_AMOUNT_ROLES: Role[] = ["OWNER"];
+
+/**
+ * Orders that owe + the total they owe, in ONE query: every unpaid contract
+ * of those orders, "amount due - paid" summed. Same sums as the table's
+ * Balance column (contractAmountDue + balanceDue in domain/payments.ts):
+ * amount due = charge after End order, else the rate, minus any write-off.
+ * A running contract counts its full rate from its start (paid upfront).
+ * Stored columns only -- no recalculating -- so it stays a few milliseconds.
+ */
+async function collectTotals(db: Db, where: Prisma.Sql): Promise<{ orders: number; amount: number }> {
+    const [row] = await db.$queryRaw<{ orders: number; amount: number }[]>`
+        SELECT count(DISTINCT o.id)::int AS orders,
+               COALESCE(sum(GREATEST(COALESCE(c.charge, c.rate) - c."writtenOffAmount" - c."paidAmount", 0)), 0)::int AS amount
+        ${FROM}
+        JOIN "Contract" c ON c."orderId" = o.id
+        WHERE ${where} AND ${UNSETTLED}`;
+    return { orders: row?.orders ?? 0, amount: row?.amount ?? 0 };
+}
+
+/** The dashboard card: counts using the same conditions as the table's filters (+ the Owner's total). */
 export async function getPaymentsSummary(db: Db, user: AuthUser): Promise<PaymentsSummary> {
     assertRole(user, PAYMENTS_LIST_ROLES);
-    const [toCollect, toRefund] = await Promise.all([
-        countOrders(db, whereFor(user, { status: "OWES" })),
+    const owes = whereFor(user, { status: "OWES" });
+    const showAmount = COLLECT_AMOUNT_ROLES.includes(user.role);
+    const [collect, toRefund] = await Promise.all([
+        // Owner: count + total together; others: just the count (the amount
+        // is never even calculated for them, so it can't reach their browser).
+        showAmount ? collectTotals(db, owes) : countOrders(db, owes).then((orders) => ({ orders, amount: null })),
         canSeeRefunds(user) ? countOrders(db, whereFor(user, { status: "REFUND" })) : Promise.resolve(null),
     ]);
-    return { toCollect, toRefund };
+    return { toCollect: collect.orders, toCollectAmount: collect.amount, toRefund };
 }

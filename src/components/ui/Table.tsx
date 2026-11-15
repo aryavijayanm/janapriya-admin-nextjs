@@ -1,6 +1,7 @@
 import { Key, ReactNode } from "react";
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { EmptyState } from "./EmptyState";
 
 export interface TableColumn<T> {
     header: string;
@@ -102,11 +103,8 @@ export function Table<T>({
                 <tbody>
                     {data.length === 0 ? (
                         <tr>
-                            <td
-                                colSpan={columns.length}
-                                className="px-4 py-8 text-center text-sm text-gray-400"
-                            >
-                                {emptyMessage}
+                            <td colSpan={columns.length} className="px-4">
+                                <EmptyState message={emptyMessage} />
                             </td>
                         </tr>
                     ) : (

@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import type { ReactNode } from "react";
-import { Ban, ChevronRight, CircleStop, OctagonX, PlayCircle, RefreshCw, UserCheck, UserMinus, type LucideIcon } from "lucide-react";
+import { Ban, ChevronRight, CircleStop, ClipboardList, OctagonX, PlayCircle, RefreshCw, UserCheck, UserMinus, Users, type LucideIcon } from "lucide-react";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { formatRupees } from "@/lib/money";
 import { DAY_PART_LABELS } from "@/server/validators/order";
 import type { OrderActivity, OrderActivityKind, StaffActivity, StaffActivityKind } from "@/server/services/activities.service";
@@ -25,8 +26,8 @@ function Line({ href, icon: Icon, tone, children, note }: { href: string; icon: 
     );
 }
 
-function List({ empty, children }: { empty: string; children: ReactNode[] }) {
-    if (children.length === 0) return <p className="py-8 text-center text-sm text-gray-400">{empty}</p>;
+function List({ empty, icon, children }: { empty: string; icon: LucideIcon; children: ReactNode[] }) {
+    if (children.length === 0) return <EmptyState message={empty} icon={icon} />;
     return <ul className="divide-y divide-gray-100 rounded-lg border border-gray-200">{children}</ul>;
 }
 
@@ -44,7 +45,7 @@ const ORDER_STYLE: Record<OrderActivityKind, { icon: LucideIcon; tone: string }>
 /** Order activities: each line opens the order page. `future` = the day is after today. */
 export function OrderActivityList({ items, future }: { items: OrderActivity[]; future: boolean }) {
     return (
-        <List empty="No order activities on this day.">
+        <List empty="No order activities on this day." icon={ClipboardList}>
             {items.map((a) => {
                 const who = (
                     <>
@@ -95,7 +96,7 @@ const STAFF_STYLE: Record<StaffActivityKind, { icon: LucideIcon; tone: string }>
 /** Staffs activities: each line opens the staff member's page. */
 export function StaffActivityList({ items }: { items: StaffActivity[] }) {
     return (
-        <List empty="No staff activities on this day.">
+        <List empty="No staff activities on this day." icon={Users}>
             {items.map((a) => {
                 const withWhom = (
                     <>

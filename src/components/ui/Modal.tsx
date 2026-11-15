@@ -46,11 +46,14 @@ export function Modal({ isOpen, onClose, title, size = "md", children }: ModalPr
 
     return createPortal(
         <div
-            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4"
+            // Opening: the dark backdrop fades in and the box grows from 95%
+            // to full size (animations in globals.css). motion-safe: no movement
+            // for people who switch animations off. Closing stays instant.
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 motion-safe:animate-fade-in"
             onClick={onClose}
         >
             <div
-                className={`bg-white w-full ${sizeClasses[size]} rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]`}
+                className={`bg-white w-full ${sizeClasses[size]} rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] motion-safe:animate-modal-in`}
                 onClick={(e) => e.stopPropagation()}
             >
                 {title && (

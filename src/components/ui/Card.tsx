@@ -31,7 +31,8 @@ const variantClasses = {
     // around it never move. motion-safe: people who switch off animations
     // get no movement, just the deeper shadow.
     dashboard:
-        "block rounded-xl p-5 shadow-sm transition duration-200 ease-out hover:shadow-xl motion-safe:hover:-translate-y-1 motion-safe:hover:scale-[1.03]",
+        // h-full: fills its grid cell, so tiles in one row are equally tall.
+        "block h-full rounded-xl p-5 shadow-sm transition duration-200 ease-out hover:shadow-xl motion-safe:hover:-translate-y-1 motion-safe:hover:scale-[1.03]",
 } as const;
 
 // Dashboard tints, one per logo colour. Each is a soft wash of that colour
@@ -46,11 +47,9 @@ export const toneClasses = {
     magenta: "bg-white bg-linear-to-br from-brand-magenta/40 to-brand-peach/70",
     purple: "bg-white bg-linear-to-br from-brand-purple/40 to-brand-peach/70",
     plum: "bg-white bg-linear-to-br from-brand-plum/35 to-brand-peach/70",
-    // A different style on purpose: a round coral glow from the top-right
-    // corner over white that turns sky blue at the bottom -- so it never reads as
-    // "the same card in another colour" next to the diagonal ones.
-    // The two layers are defined in globals.css (@utility bg-glow-coral).
-    coral: "bg-glow-coral",
+    // Same diagonal style, but coral fading into sky blue instead of peach --
+    // the cool end keeps it from looking like the purple card next to it.
+    coral: "bg-white bg-linear-to-br from-brand-coral/40 to-brand-sky",
 } as const;
 
 // Full class names, not `max-w-${width}`: Tailwind finds classes by reading the
