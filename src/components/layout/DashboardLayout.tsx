@@ -55,6 +55,9 @@ export function DashboardLayout({ user, children }: { user: AuthUser; children: 
                     "fixed inset-y-0 left-0 z-50 w-56 overflow-hidden transition-all duration-300 ease-in-out",
                     mobileOpen ? "translate-x-0" : "-translate-x-full",
                     "lg:static lg:translate-x-0",
+                    // Laptop: the sidebar's rounded right corners show what's behind
+                    // this box, so paint it the same grey as the main area.
+                    "lg:bg-gray-200",
                     expanded ? "lg:w-56" : "lg:w-20",
                 )}
             >
