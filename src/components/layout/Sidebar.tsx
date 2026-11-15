@@ -89,9 +89,10 @@ export function Sidebar({ user, isOpen }: SidebarProps) {
 
     return (
         <aside
-            // Only the right-side corners (top-right, bottom-right) are rounded;
-            // the left side stays flat against the screen edge.
-            className={`h-full bg-sidebar-bg text-sidebar-text overflow-y-auto rounded-r-2xl`}
+            // Phone drawer: only the right-side corners are rounded (the left side is
+            // flat against the screen edge). Laptop: it sits in a 4px frame
+            // (see DashboardLayout), so all four corners are rounded.
+            className={`h-full bg-sidebar-bg text-sidebar-text overflow-y-auto no-scrollbar rounded-r-2xl lg:rounded-2xl`}
         >
             {/* Logo Section - same colour as the sidebar (the logo PNG is transparent) */}
             <div className="h-16 flex items-center justify-center bg-sidebar-bg overflow-hidden">

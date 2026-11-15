@@ -6,7 +6,7 @@ import type { PaymentsSummary } from "@/server/services/payments-list.service";
 /** One count that opens the payments table already filtered. */
 function Count({ href, label, count, tone }: { href: string; label: string; count: number; tone: string }) {
     return (
-        <Link href={href} className="rounded-lg bg-gray-50 px-4 py-3 hover:bg-gray-100">
+        <Link href={href} className="dashboard-tile transition-colors hover:bg-white">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</p>
             <p className={`mt-1 text-xl font-bold tabular-nums ${tone}`}>{count}</p>
             <p className="text-xs text-gray-500">orders</p>
@@ -19,7 +19,7 @@ function Count({ href, label, count, tone }: { href: string; label: string; coun
 // Each count is one indexed count query, the same conditions as the table's filters.
 export function PaymentsCard({ summary }: { summary: PaymentsSummary }) {
     return (
-        <Card variant="dashboard">
+        <Card variant="dashboard" tone="magenta">
             <Link href="/payments" className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-lg font-bold text-gray-900">
                     <CreditCard className="w-5 h-5 text-primary" />

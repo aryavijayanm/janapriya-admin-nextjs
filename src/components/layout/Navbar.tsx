@@ -3,8 +3,9 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Activity, BellRing, Calendar1, Menu, Power, Search } from "lucide-react";
+import { Activity, Calendar1, CircleHelp, Menu, Power, Search } from "lucide-react";
 import { CalendarPanel } from "@/features/calendar/CalendarPanel";
+import { HelpModal } from "@/features/help/HelpModal";
 import { logoutAction } from "@/features/auth/auth.actions";
 import type { AuthUser } from "@/server/services/authz";
 
@@ -15,6 +16,7 @@ interface NavbarProps {
 
 export function Navbar({ user, onToggleSidebar }: NavbarProps) {
     const [isCalendarOpen, setIsCalendarOpen] = useState(false);
+    const [isHelpOpen, setIsHelpOpen] = useState(false);
     const [staffSearch, setStaffSearch] = useState("");
     const [customerSearch, setCustomerSearch] = useState("");
     const router = useRouter();
@@ -33,7 +35,8 @@ export function Navbar({ user, onToggleSidebar }: NavbarProps) {
     const runCustomerSearch = () => runSearch("/customer", customerSearch);
 
     return (
-        <header className="h-16 bg-white border-b border-gray-100 px-4 flex items-center justify-between sticky shadow-lg top-0 z-40">
+        <header className="h-16 bg-white border-b border-gray-100 rounded-2xl px-4 flex items-center justify-between shadow-lg">
+            {/* Sticky + z-index live on the wrapper in DashboardLayout, not here. */}
             <div className="flex items-center gap-4">
                 <button
                     onClick={onToggleSidebar}
@@ -109,13 +112,15 @@ export function Navbar({ user, onToggleSidebar }: NavbarProps) {
                     <Calendar1 className="h-5 w-5" />
                 </button>
 
-                {/* Notifications */}
+                {/* Help: the daily checklist popup. */}
                 <button
-                    className="text-gray-500 hover:text-primary transition-colors relative"
-                    aria-label="Notifications"
+                    type="button"
+                    onClick={() => setIsHelpOpen(true)}
+                    className="text-gray-500 hover:text-primary transition-colors"
+                    aria-label="Help"
+                    title="Help"
                 >
-                    <BellRing className="h-5 w-5" />
-                    <span className="absolute -top-1 -right-1 h-2 w-2 bg-red-500 rounded-full border border-white"></span>
+                    <CircleHelp className="h-5 w-5" />
                 </button>
 
                 {/* Vertical Divider + User Info: hidden on phones, where there's no room */}
@@ -143,6 +148,7 @@ export function Navbar({ user, onToggleSidebar }: NavbarProps) {
                 isOpen={isCalendarOpen}
                 onClose={() => setIsCalendarOpen(false)}
             />
+            <HelpModal isOpen={isHelpOpen} onClose={() => setIsHelpOpen(false)} />
         </header>
     );
 }

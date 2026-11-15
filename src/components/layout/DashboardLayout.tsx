@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { usePathname } from "next/navigation";
 import { cn } from "@/lib/cn";
 import { PanicLogout } from "@/features/auth/PanicLogout";
 import type { AuthUser } from "@/server/services/authz";
@@ -33,8 +34,13 @@ export function DashboardLayout({ user, children }: { user: AuthUser; children: 
         }
     };
 
+    // Dashboard only: a flat light gray instead of the app gradient. It just
+    // overrides the --app-bg variable here; every bg-app box inside (page area,
+    // sidebar frame, navbar strip) reads it, so they all change together.
+    const isDashboard = usePathname() === "/dashboard";
+
     return (
-        <div className="min-h-screen bg-gray-50 flex">
+        <div className={cn("min-h-screen bg-gray-50 flex", isDashboard && "[--app-bg:var(--color-gray-100)]")}>
             {/* Dimmed backdrop behind the phone drawer; tapping it closes the drawer */}
             {mobileOpen && (
                 <div
@@ -54,10 +60,14 @@ export function DashboardLayout({ user, children }: { user: AuthUser; children: 
                 className={cn(
                     "fixed inset-y-0 left-0 z-50 w-56 overflow-hidden transition-all duration-300 ease-in-out",
                     mobileOpen ? "translate-x-0" : "-translate-x-full",
-                    "lg:static lg:translate-x-0",
-                    // Laptop: the sidebar's rounded right corners show what's behind
-                    // this box, so paint it the same grey as the main area.
-                    "lg:bg-gray-200",
+                    // Laptop: sticky and exactly one screen tall, so it stays in view
+                    // while the page scrolls. A longer menu scrolls inside the sidebar
+                    // (the <aside> in Sidebar.tsx is h-full + overflow-y-auto).
+                    "lg:sticky lg:top-0 lg:bottom-auto lg:h-screen lg:self-start lg:translate-x-0",
+                    // Laptop: a 4px frame around the sidebar (same background as the main
+                    // area), so its four rounded corners show. No right padding: the
+                    // navbar strip's own 4px left padding is the gap between them.
+                    "lg:bg-app lg:p-1 lg:pr-0",
                     expanded ? "lg:w-56" : "lg:w-20",
                 )}
             >
@@ -65,9 +75,16 @@ export function DashboardLayout({ user, children }: { user: AuthUser; children: 
             </div>
 
             {/* Main Content */}
-            <div className="relative flex-1 bg-gray-200 flex flex-col min-w-0 transition-all duration-300 ease-in-out">
+            <div className="relative flex-1 bg-app flex flex-col min-w-0 transition-all duration-300 ease-in-out">
                 <PanicLogout />
-                <Navbar user={user} onToggleSidebar={toggleSidebar} />
+                {/* Sticky strip around the navbar. It's painted with the same app
+                    background as the page and has a 4px padding (p-1), so the gap
+                    around the navbar is solid -- content scrolling up hides behind it
+                    instead of showing through. bg-app is pinned to the screen, so the
+                    strip's gradient lines up with the page's exactly. */}
+                <div className="sticky top-0 z-40 bg-app p-1">
+                    <Navbar user={user} onToggleSidebar={toggleSidebar} />
+                </div>
                 <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
                     {children}
                 </main>

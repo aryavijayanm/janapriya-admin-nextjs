@@ -18,8 +18,8 @@ export default async function DashboardPage() {
 
     const [payments, totals, accountsToday, activityCounts] = await Promise.all([
         getPaymentsSummary(db, user),
-        // Money totals are for the Owner only; everyone else sees the card name.
-        user.role === "OWNER" ? getStaffBalanceTotals(db, user) : Promise.resolve(null),
+        // Staff counts for everyone; the service adds the amounts for the Owner only.
+        getStaffBalanceTotals(db, user),
         // The accounts book: everyone except OUTSIDER (same rule as the book itself).
         user.role !== "OUTSIDER" ? getAccountDay(db, user, today) : Promise.resolve(null),
         getDayActivityCounts(db, user, today),

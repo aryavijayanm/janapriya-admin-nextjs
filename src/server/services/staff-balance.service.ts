@@ -20,7 +20,7 @@ import type { StaffBalanceQuery } from "@/server/validators/staff-balance";
 
 /** Everyone may view the list (owner's decision). */
 const STAFF_BALANCE_ROLES: Role[] = [...ALL_ROLES];
-/** The money totals on the dashboard card. */
+/** The money amounts on the dashboard card (the staff counts are for everyone). */
 const BALANCE_TOTALS_ROLES: Role[] = ["OWNER"];
 
 const PAGE_SIZE = 25;
@@ -190,19 +190,26 @@ export async function listStaffBalances(
 }
 
 export interface StaffBalanceTotals {
-    owedToStaff: { amount: number; staff: number };
-    staffOwes: { amount: number; staff: number };
+    /** amount is null for everyone except the Owner (counts are for everyone). */
+    owedToStaff: { amount: number | null; staff: number };
+    staffOwes: { amount: number | null; staff: number };
 }
 
-/** The dashboard card's totals (Owner only): two sums over the stored column. */
+/**
+ * The dashboard card's totals: two sums + counts over the stored column.
+ * Everyone gets the staff counts; only the Owner gets the money amounts.
+ * The amount is removed HERE on the server, not hidden in the card -- so it
+ * never even reaches the browser of someone who shouldn't see it.
+ */
 export async function getStaffBalanceTotals(db: Db, user: AuthUser): Promise<StaffBalanceTotals> {
-    assertRole(user, BALANCE_TOTALS_ROLES);
+    assertRole(user, STAFF_BALANCE_ROLES);
+    const showAmounts = BALANCE_TOTALS_ROLES.includes(user.role);
     const [owed, owes] = await Promise.all([
         db.staff.aggregate({ where: { balanceDue: { gt: 0 } }, _sum: { balanceDue: true }, _count: true }),
         db.staff.aggregate({ where: { balanceDue: { lt: 0 } }, _sum: { balanceDue: true }, _count: true }),
     ]);
     return {
-        owedToStaff: { amount: owed._sum.balanceDue ?? 0, staff: owed._count },
-        staffOwes: { amount: -(owes._sum.balanceDue ?? 0), staff: owes._count },
+        owedToStaff: { amount: showAmounts ? (owed._sum.balanceDue ?? 0) : null, staff: owed._count },
+        staffOwes: { amount: showAmounts ? -(owes._sum.balanceDue ?? 0) : null, staff: owes._count },
     };
 }

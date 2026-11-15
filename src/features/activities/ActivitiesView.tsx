@@ -45,18 +45,14 @@ export function ActivitiesView({ day, today, tab, activities }: ActivitiesViewPr
     };
 
     return (
-        <div className="space-y-6">
-            <Card variant="section" as="section" className="space-y-4">
-                <h2 className="text-2xl font-bold text-gray-800">ACTIVITIES</h2>
-                <DayNav day={day} today={today} allowFuture />
-            </Card>
-
-            <Card variant="section" as="section" className="space-y-4">
-                <Tabs tabs={tabs} value={current} onChange={setTab} />
-                {current === "orders" && <OrderActivityList items={activities.orders} future={day > today} />}
-                {current === "staff" && <StaffActivityList items={activities.staff} />}
-                {current === "money" && activities.money && <AccountDaySummary data={activities.money} columns={MONEY_COLUMNS} />}
-            </Card>
-        </div>
+        // One card for the whole page: heading, day buttons, tabs and the list.
+        <Card variant="section" as="section" className="space-y-4">
+            <h2 className="text-2xl font-bold text-gray-800">ACTIVITIES</h2>
+            <DayNav day={day} today={today} allowFuture />
+            <Tabs tabs={tabs} value={current} onChange={setTab} />
+            {current === "orders" && <OrderActivityList items={activities.orders} future={day > today} />}
+            {current === "staff" && <StaffActivityList items={activities.staff} />}
+            {current === "money" && activities.money && <AccountDaySummary data={activities.money} columns={MONEY_COLUMNS} />}
+        </Card>
     );
 }

@@ -5,7 +5,7 @@ import type { AccountDay } from "@/server/services/account-book.service";
 
 function Total({ label, amount, tone }: { label: string; amount: number; tone: string }) {
     return (
-        <div className="rounded-lg bg-gray-50 px-4 py-3">
+        <div className="dashboard-tile">
             <p className="text-xs font-semibold uppercase tracking-wider text-gray-500">{label}</p>
             <p className={`mt-1 text-xl font-bold tabular-nums ${tone}`}>{formatRupees(amount)}</p>
         </div>
@@ -17,7 +17,7 @@ function Total({ label, amount, tone }: { label: string; amount: number; tone: s
 // opens the book. Not shown to OUTSIDER (they can't open the book).
 export function AccountsBookCard({ today }: { today: AccountDay }) {
     return (
-        <Card variant="dashboard" href="/accounts">
+        <Card variant="dashboard" tone="coral" href="/accounts">
             <span className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-lg font-bold text-gray-900">
                     <BookOpen className="w-5 h-5 text-primary" />
