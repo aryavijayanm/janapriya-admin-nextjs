@@ -7,6 +7,12 @@ import { NOTE_MAX_LENGTH, REMARKS_MAX_LENGTH, limitedText } from "./text";
 
 export const BRANCHES = ["KERALA", "OUTSIDE"] as const;
 export const DAY_PARTS = ["FULL", "HALF", "NO_PAY"] as const;
+/** What each day part is called on screen. */
+export const DAY_PART_LABELS: Record<(typeof DAY_PARTS)[number], string> = {
+    FULL: "Full day",
+    HALF: "Half day",
+    NO_PAY: "No pay",
+};
 /** Worked out from the data, never stored (see order.service). */
 export const ORDER_STATUSES = ["WAITING", "ACTIVE", "ENDED"] as const;
 

@@ -30,7 +30,8 @@ function amountCell(row: AccountBookRow, colour: string) {
  * The book's columns -- written once, used by the day card and the month
  * table, so both always look the same.
  *   showDate -- false in the day card (every row is that day)
- *   onEdit / onDelete -- the icons on typed entries (other rows have none)
+ *   onEdit / onDelete -- the icons on typed entries (other rows have none);
+ *                        leave both out for a read-only table (activities)
  */
 export function accountColumns({
     showDate,
@@ -38,9 +39,36 @@ export function accountColumns({
     onDelete,
 }: {
     showDate: boolean;
-    onEdit: (row: AccountBookRow) => void;
-    onDelete: (row: AccountBookRow) => void;
+    onEdit?: (row: AccountBookRow) => void;
+    onDelete?: (row: AccountBookRow) => void;
 }): TableColumn<AccountBookRow>[] {
+    const actions: TableColumn<AccountBookRow>[] =
+        onEdit && onDelete
+            ? [
+                  {
+                      header: "Actions",
+                      accessor: (row) =>
+                          // Only typed entries can be changed here.
+                          row.source === "ENTRY" ? (
+                              <div className="flex gap-1">
+                                  <Button size="sm" variant="ghost" aria-label="Edit entry" onClick={() => onEdit(row)}>
+                                      <Pencil className="w-4 h-4" />
+                                  </Button>
+                                  <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="text-red-600"
+                                      aria-label="Delete entry"
+                                      onClick={() => onDelete(row)}
+                                  >
+                                      <Trash2 className="w-4 h-4" />
+                                  </Button>
+                              </div>
+                          ) : null,
+                  },
+              ]
+            : [];
+
     return [
         ...(showDate
             ? [{ header: "Date", accessor: (row: AccountBookRow) => <span className={strike(row)}>{formatDate(row.date)}</span> }]
@@ -64,20 +92,6 @@ export function accountColumns({
         { header: "Receipts", accessor: (row) => (row.direction === "IN" ? amountCell(row, "text-green-700") : null) },
         { header: "Payments", accessor: (row) => (row.direction === "OUT" ? amountCell(row, "text-red-700") : null) },
         { header: "How", accessor: (row) => <span className={strike(row)}>{accountModeLabel(row.source, row.mode)}</span> },
-        {
-            header: "Actions",
-            accessor: (row) =>
-                // Only typed entries can be changed here.
-                row.source === "ENTRY" ? (
-                    <div className="flex gap-1">
-                        <Button size="sm" variant="ghost" aria-label="Edit entry" onClick={() => onEdit(row)}>
-                            <Pencil className="w-4 h-4" />
-                        </Button>
-                        <Button size="sm" variant="ghost" className="text-red-600" aria-label="Delete entry" onClick={() => onDelete(row)}>
-                            <Trash2 className="w-4 h-4" />
-                        </Button>
-                    </div>
-                ) : null,
-        },
+        ...actions,
     ];
 }

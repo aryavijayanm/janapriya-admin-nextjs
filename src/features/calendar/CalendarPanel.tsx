@@ -1,10 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Modal } from "@/components/ui/Modal";
+import { toDateInputValue } from "@/lib/date";
 import { MiniMonthGrid } from "./MiniMonthGrid";
-import { getMonthCells, isSameDay, isWeekend, MONTH_NAMES, WEEKDAY_NAMES } from "./monthGrid";
+import { cellToIsoDate, getMonthCells, isWeekend, MONTH_NAMES, WEEKDAY_NAMES } from "./monthGrid";
 
 interface CalendarPanelProps {
     isOpen: boolean;
@@ -15,19 +17,24 @@ const today = new Date();
 const YEAR_RANGE = Array.from({ length: 21 }, (_, i) => today.getFullYear() - 10 + i);
 
 export function CalendarPanel({ isOpen, onClose }: CalendarPanelProps) {
+    const router = useRouter();
     const [currentDate, setCurrentDate] = useState(new Date());
-    // null = calendar view; a real date = activities view for that date.
-    const [selectedDate, setSelectedDate] = useState<Date | null>(null);
+    // Today in Kerala (not this computer's own clock), for the highlight.
+    const todayIso = toDateInputValue(new Date());
 
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
 
-    // Modal's own close (X / backdrop click) always exits fully, from either
-    // view, and resets so reopening always starts back on the current month.
+    // Closing resets, so reopening always starts back on the current month.
     const handleClose = () => {
         onClose();
-        setSelectedDate(null);
         setCurrentDate(new Date());
+    };
+
+    // A date click opens that day's activities page.
+    const openDay = (date: Date) => {
+        handleClose();
+        router.push(`/activities?day=${cellToIsoDate(date)}`);
     };
 
     const goToPrevMonth = () => setCurrentDate(new Date(year, month - 1, 1));
@@ -41,27 +48,8 @@ export function CalendarPanel({ isOpen, onClose }: CalendarPanelProps) {
     const prevMonthDate = new Date(year, month - 1, 1);
     const nextMonthDate = new Date(year, month + 1, 1);
 
-    const title = selectedDate
-        ? `Activities — ${MONTH_NAMES[selectedDate.getMonth()]} ${selectedDate.getDate()}, ${selectedDate.getFullYear()}`
-        : "Calendar";
-
     return (
-        <Modal isOpen={isOpen} onClose={handleClose} title={title} size="xl">
-            {selectedDate ? (
-                <div className="space-y-4">
-                    <button
-                        type="button"
-                        onClick={() => setSelectedDate(null)}
-                        className="inline-flex items-center gap-1 text-sm font-semibold text-primary hover:text-primary/80 transition-colors"
-                    >
-                        <ChevronLeft className="h-4 w-4" />
-                        Back to calendar
-                    </button>
-                    <div className="rounded-xl border border-dashed border-gray-300 p-10 text-center text-gray-500">
-                        Activities for this date — coming soon.
-                    </div>
-                </div>
-            ) : (
+        <Modal isOpen={isOpen} onClose={handleClose} title="Calendar" size="xl">
                 <div className="grid grid-cols-3 gap-6">
                     {/* Main month -- 2/3 width */}
                     <div className="col-span-2">
@@ -123,12 +111,14 @@ export function CalendarPanel({ isOpen, onClose }: CalendarPanelProps) {
                             {cells.map((date, i) => {
                                 if (!date) return <div key={`empty-${i}`} />;
                                 const weekend = isWeekend(date);
-                                const isToday = isSameDay(date, today);
+                                const iso = cellToIsoDate(date);
+                                const isToday = iso === todayIso;
                                 return (
                                     <button
-                                        key={date.toISOString()}
+                                        key={iso}
                                         type="button"
-                                        onClick={() => setSelectedDate(date)}
+                                        onClick={() => openDay(date)}
+                                        title="Open this day's activities"
                                         className={`h-12 rounded-lg text-left pl-2 pt-1 text-lg font-extrabold transition-colors hover:bg-primary/10 ${isToday
                                                 ? "bg-blue-50 ring-2 ring-primary text-primary"
                                                 : weekend
@@ -157,7 +147,6 @@ export function CalendarPanel({ isOpen, onClose }: CalendarPanelProps) {
                         />
                     </div>
                 </div>
-            )}
         </Modal>
     );
 }

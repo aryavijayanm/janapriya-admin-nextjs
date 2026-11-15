@@ -222,6 +222,7 @@ model CustomerOrder {
 
   @@index([customerId])
   @@index([branch])
+  @@index([endDate]) // activities: orders ended on a day
 }
 
 // Which services an order covers -- same shape as StaffService. A separate
@@ -285,8 +286,9 @@ model Contract {
   updatedAt       DateTime      @updatedAt @db.Timestamptz
 
   @@unique([orderId, contractNumber])
-  // The nightly job looks contracts up by end date.
+  // The nightly job (and activities) look contracts up by end date.
   @@index([endDate])
+  @@index([startDate]) // activities: contracts started on a day
 }
 
 // How a customer's money reached us. Recording only -- no money moves through
@@ -371,6 +373,8 @@ model OrderWriteOff {
   recordedById Int?
   recordedBy   User?         @relation(fields: [recordedById], references: [id], onDelete: SetNull)
   createdAt    DateTime      @default(now()) @db.Timestamptz
+
+  @@index([writtenOffOn]) // activities: written off on a day
 }
 
 // One duty period: one staff member working on one order from a date, until a
@@ -405,6 +409,9 @@ model StaffAssignment {
 
   @@index([orderId])
   @@index([staffId])
+  // activities: duty started / ended on a day
+  @@index([startDate])
+  @@index([endDate])
 }
 
 // ---------------------------------------------------------------------------

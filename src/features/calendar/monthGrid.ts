@@ -23,12 +23,15 @@ export function getMonthCells(year: number, month: number): (Date | null)[] {
     return cells;
 }
 
-export function isSameDay(a: Date, b: Date): boolean {
-    return (
-        a.getFullYear() === b.getFullYear() &&
-        a.getMonth() === b.getMonth() &&
-        a.getDate() === b.getDate()
-    );
+/**
+ * A grid cell as yyyy-mm-dd. The cells are built from plain year / month /
+ * day numbers, so this reads those same numbers back -- no timezone can
+ * shift the date (toISOString() could, on a computer set to another zone).
+ */
+export function cellToIsoDate(date: Date): string {
+    const mm = String(date.getMonth() + 1).padStart(2, "0");
+    const dd = String(date.getDate()).padStart(2, "0");
+    return `${date.getFullYear()}-${mm}-${dd}`;
 }
 
 export function isWeekend(date: Date): boolean {

@@ -59,6 +59,12 @@ export function parseDayMonthYear(text: string): string | null {
     return !Number.isNaN(date.getTime()) && date.toISOString().slice(0, 10) === iso ? iso : null;
 }
 
+/** The weekday of a date in Kerala, e.g. "Saturday". */
+export function formatWeekday(value: string | Date): string {
+    const date = typeof value === "string" ? new Date(value) : value;
+    return date.toLocaleDateString("en-IN", { weekday: "long", timeZone: KERALA_TIME_ZONE });
+}
+
 /** A yyyy-mm-dd date moved by whole days: shiftIsoDate("2026-11-01", -1) -> "2026-10-31". */
 export function shiftIsoDate(iso: string, days: number): string {
     const date = new Date(`${iso}T00:00:00.000Z`);

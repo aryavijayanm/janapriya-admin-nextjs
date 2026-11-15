@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { BellRing, Calendar1, Menu, Power, Search } from "lucide-react";
+import { Activity, BellRing, Calendar1, Menu, Power, Search } from "lucide-react";
 import { CalendarPanel } from "@/features/calendar/CalendarPanel";
 import { logoutAction } from "@/features/auth/auth.actions";
 import type { AuthUser } from "@/server/services/authz";
@@ -89,6 +90,16 @@ export function Navbar({ user, onToggleSidebar }: NavbarProps) {
 
             {/* Right Side Icons & User Info -- tighter gap on phones */}
             <div className="flex items-center gap-4 sm:gap-6">
+                {/* Activities: today's page (just before the calendar). */}
+                <Link
+                    href="/activities"
+                    className="flex items-center gap-1.5 rounded-lg px-2 py-1 text-sm font-bold text-gray-600 hover:text-primary transition-colors"
+                    aria-label="Activities"
+                >
+                    <Activity className="h-5 w-5" />
+                    <span className="hidden sm:inline">ACTIVITIES</span>
+                </Link>
+
                 {/* Calendar */}
                 <button
                     onClick={() => setIsCalendarOpen(true)}

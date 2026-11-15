@@ -55,7 +55,7 @@ const ORDER_CODE_ATTEMPTS = 5;
  * OUTSIDE-branch order. To them a hidden order behaves exactly like one that
  * doesn't exist (404), so even its existence isn't revealed.
  */
-function visibleOrders(user: AuthUser): Prisma.CustomerOrderWhereInput {
+export function visibleOrders(user: AuthUser): Prisma.CustomerOrderWhereInput {
     return user.role === "OUTSIDER" ? { branch: { not: "OUTSIDE" } } : {};
 }
 
