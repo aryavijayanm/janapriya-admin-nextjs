@@ -1,9 +1,7 @@
-import Link from "next/link";
 import { BookOpen, ChevronRight } from "lucide-react";
+import { Card } from "@/components/ui/Card";
 import { formatRupees } from "@/lib/money";
 import type { AccountDay } from "@/server/services/account-book.service";
-
-const CARD = "block rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-primary hover:shadow-md";
 
 function Total({ label, amount, tone }: { label: string; amount: number; tone: string }) {
     return (
@@ -19,7 +17,7 @@ function Total({ label, amount, tone }: { label: string; amount: number; tone: s
 // opens the book. Not shown to OUTSIDER (they can't open the book).
 export function AccountsBookCard({ today }: { today: AccountDay }) {
     return (
-        <Link href="/accounts" className={CARD}>
+        <Card variant="dashboard" href="/accounts">
             <span className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-lg font-bold text-gray-900">
                     <BookOpen className="w-5 h-5 text-primary" />
@@ -32,6 +30,6 @@ export function AccountsBookCard({ today }: { today: AccountDay }) {
                 <Total label="Payments" amount={today.totalOut} tone="text-red-700" />
             </span>
             <span className="mt-3 block text-xs text-gray-500">Today</span>
-        </Link>
+        </Card>
     );
 }

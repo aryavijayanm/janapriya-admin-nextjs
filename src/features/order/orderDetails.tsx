@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { formatDate } from "@/lib/date";
 import { formatRupees } from "@/lib/money";
 import { latestPage } from "@/lib/latestPage";
@@ -94,7 +95,7 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
     const duties = latestPage(order.duties, DUTIES_SHOWN);
 
     return (
-        <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-md overflow-hidden">
+        <Card variant="details" width="5xl">
             {/* ===== Header band ===== */}
             <div className="bg-linear-to-br from-pink-100 via-pink-50 to-purple-100 border-b border-gray-200 px-4 py-4 sm:px-8 sm:py-6">
                 <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
@@ -300,6 +301,6 @@ export default function OrderDetails({ order, gaps, nextContract, leaveDays, tod
                     onClose={() => setDialog(null)}
                 />
             )}
-        </div>
+        </Card>
     );
 }

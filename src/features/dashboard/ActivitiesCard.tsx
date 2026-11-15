@@ -1,8 +1,7 @@
 import Link from "next/link";
 import { Activity, ChevronRight } from "lucide-react";
+import { Card } from "@/components/ui/Card";
 import type { DayActivityCounts } from "@/server/services/activities.service";
-
-const CARD = "block rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-primary hover:shadow-md";
 
 /** One count that opens today's activities on that tab. */
 function Count({ href, label, count }: { href: string; label: string; count: number }) {
@@ -18,7 +17,7 @@ function Count({ href, label, count }: { href: string; label: string; count: num
 // Everyone sees it; the Money count only for those who see money.
 export function ActivitiesCard({ counts }: { counts: DayActivityCounts }) {
     return (
-        <div className={CARD}>
+        <Card variant="dashboard">
             <Link href="/activities" className="flex items-center justify-between">
                 <span className="flex items-center gap-2 text-lg font-bold text-gray-900">
                     <Activity className="w-5 h-5 text-primary" />
@@ -32,6 +31,6 @@ export function ActivitiesCard({ counts }: { counts: DayActivityCounts }) {
                 {counts.money !== null && <Count href="/activities?tab=money" label="Money" count={counts.money} />}
             </div>
             <p className="mt-3 text-xs text-gray-500">Today</p>
-        </div>
+        </Card>
     );
 }

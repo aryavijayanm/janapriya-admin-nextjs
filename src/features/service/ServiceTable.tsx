@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Table, type TableColumn } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { Card } from "@/components/ui/Card";
 import { ServiceFormModal } from "@/features/service/ServiceFormModal";
 import { setServiceActiveAction } from "@/features/service/service.actions";
 import { useServerAction } from "@/hooks/useServerAction";
@@ -72,8 +73,7 @@ export default function ServiceTable({ services }: { services: Service[] }) {
 
     return (
         <>
-            {/* p-4 on phones, p-8 from sm: up -- same look on a laptop. */}
-            <div className="max-w-4xl mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md">
+            <Card variant="page" width="4xl">
                 <h2 className="text-2xl font-bold mb-6 text-gray-800">Manage Services</h2>
 
                 {error && <Alert variant="error" className="mb-4">{error}</Alert>}
@@ -87,7 +87,7 @@ export default function ServiceTable({ services }: { services: Service[] }) {
                 <div className="mt-4">
                     <Button onClick={handleAdd}>+ Add Service</Button>
                 </div>
-            </div>
+            </Card>
 
             {/* Mounted only while open and keyed per service, so the form starts
                 fresh on every open -- same reasoning as UserFormModal. */}

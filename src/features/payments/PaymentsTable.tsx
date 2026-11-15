@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Info, Search } from "lucide-react";
+import { Card } from "@/components/ui/Card";
 import { DataTable } from "@/components/ui/DataTable";
 import { FilterGroup } from "@/components/ui/FilterGroup";
 import { Input } from "@/components/ui/Input";
@@ -124,7 +125,7 @@ export function PaymentsTable({ orders, pagination, query, showBranch, showRefun
     ];
 
     return (
-        <div className="max-w-full mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md">
+        <Card variant="page" width="full">
             <h2 className="text-2xl font-bold text-gray-800">Payments</h2>
             <p className="mt-1 mb-6 flex items-start gap-2 text-sm text-gray-600">
                 <Info className="w-4 h-4 shrink-0 mt-0.5" />
@@ -184,6 +185,6 @@ export function PaymentsTable({ orders, pagination, query, showBranch, showRefun
                 onPageChange={setPage}
                 onRowClick={({ order }) => router.push(`/orders/${order.code}`)}
             />
-        </div>
+        </Card>
     );
 }

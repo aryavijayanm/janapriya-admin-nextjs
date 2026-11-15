@@ -1,5 +1,6 @@
 "use client";
 
+import { Card } from "@/components/ui/Card";
 import type { TableColumn } from "@/components/ui/Table";
 import { DayNav } from "@/components/ui/DayNav";
 import { AccountDaySummary } from "@/features/accounts/AccountDaySummary";
@@ -18,11 +19,11 @@ interface AccountDayCardProps {
 // over the shared Receipts / Payments / Net summary and the day's rows.
 export function AccountDayCard({ day, today, data, columns }: AccountDayCardProps) {
     return (
-        <section className="bg-white rounded-lg shadow-md p-4 sm:p-6 space-y-4">
+        <Card variant="section" as="section" className="space-y-4">
             <DayNav day={day} today={today} allowFuture={false} />
             <div>
                 <AccountDaySummary data={data} columns={columns} />
             </div>
-        </section>
+        </Card>
     );
 }

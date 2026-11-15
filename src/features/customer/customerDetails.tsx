@@ -20,6 +20,7 @@ import type { LucideIcon } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/ui/Alert";
+import { Card } from "@/components/ui/Card";
 import { WhatsAppButton } from "@/components/ui/WhatsAppButton";
 import { formatDate } from "@/lib/date";
 import { setCustomerStatusAction } from "@/features/customer/customer.actions";
@@ -46,10 +47,10 @@ function InfoRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
-        <section className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+        <Card variant="inner" as="section">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">{title}</h3>
             {children}
-        </section>
+        </Card>
     );
 }
 
@@ -118,7 +119,7 @@ export default function CustomerDetails({ customer, orders }: { customer: Custom
     const status = STATUS_STYLES[customer.status];
 
     return (
-        <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-md overflow-hidden">
+        <Card variant="details" width="5xl">
             {/* ===== Header band ===== */}
             <div className="bg-linear-to-br from-pink-100 via-pink-50 to-purple-100 border-b border-gray-200 px-4 py-4 sm:px-8 sm:py-6">
                 {/* Left: Back, name, contacts. Right: code + customer since.
@@ -233,6 +234,6 @@ export default function CustomerDetails({ customer, orders }: { customer: Custom
                     </Button>
                 </div>
             </Modal>
-        </div>
+        </Card>
     );
 }

@@ -2,6 +2,7 @@
 
 import { Briefcase, Hash, Heart, IdCard, Landmark, MapPin, Phone, StickyNote, User } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import { Card } from "@/components/ui/Card";
 import { StaffHeader } from "@/features/staff/StaffHeader";
 import type { StaffWithServices } from "@/server/services/staff.service";
 
@@ -31,10 +32,10 @@ function InfoRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string
 // set apart by a hairline border and a soft shadow rather than a grey fill.
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
     return (
-        <section className="rounded-xl border border-gray-200 bg-white px-5 py-4 shadow-sm">
+        <Card variant="inner" as="section">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">{title}</h3>
             {children}
-        </section>
+        </Card>
     );
 }
 
@@ -44,7 +45,7 @@ function Section({ title, children }: { title: string; children: React.ReactNode
 export default function StaffDetails({ staff, photoUrl }: StaffDetailsProps) {
     return (
         // Same width as the account page, so the shared header doesn't jump between the two.
-        <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-md overflow-hidden">
+        <Card variant="details" width="6xl">
             <StaffHeader staff={staff} photoUrl={photoUrl} current="profile" />
 
             {/* ===== Body ===== */}
@@ -100,6 +101,6 @@ export default function StaffDetails({ staff, photoUrl }: StaffDetailsProps) {
                     </div>
                 </Section>
             </div>
-        </div>
+        </Card>
     );
 }

@@ -6,6 +6,7 @@ import { customerIdSchema } from "@/server/validators/customer";
 import { orderCodeSchema } from "@/server/validators/order";
 import { getOrderByCode } from "@/server/services/order.service";
 import { Alert } from "@/components/ui/Alert";
+import { Card } from "@/components/ui/Card";
 import OrderForm from "@/features/order/orderForm";
 
 type SearchParams = Promise<Record<string, string | string[] | undefined>>;
@@ -25,7 +26,7 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Sea
     const restartOrder = restartCode.success ? await getOrderByCode(db, user, restartCode.data) : null;
     if (restartCode.success && (!restartOrder || restartOrder.status !== "ENDED" || restartOrder.restartedAs)) {
         return (
-            <div className="max-w-4xl mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md space-y-4">
+            <Card variant="page" width="4xl" className="space-y-4">
                 <Alert variant="error">
                     {!restartOrder
                         ? "The order to restart was not found."
@@ -36,7 +37,7 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Sea
                 <Link href="/orders" className="text-primary hover:underline">
                     Back to orders
                 </Link>
-            </div>
+            </Card>
         );
     }
 
@@ -48,7 +49,7 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Sea
     // rather than showing a form that would only fail on saving.
     if (customer && customer.status !== "ACTIVE") {
         return (
-            <div className="max-w-4xl mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md space-y-4">
+            <Card variant="page" width="4xl" className="space-y-4">
                 <Alert variant="error">
                     {customer.name} is {customer.status === "DISABLED" ? "disabled" : "deleted"}, so a new order
                     can&apos;t be created for them.
@@ -56,7 +57,7 @@ export default async function NewOrderPage({ searchParams }: { searchParams: Sea
                 <Link href={`/customer/${customer.id}`} className="text-primary hover:underline">
                     Back to the customer
                 </Link>
-            </div>
+            </Card>
         );
     }
 

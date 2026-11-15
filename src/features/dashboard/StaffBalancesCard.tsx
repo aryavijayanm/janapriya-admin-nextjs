@@ -1,10 +1,9 @@
 import Link from "next/link";
 import { ChevronRight, Wallet } from "lucide-react";
+import { Card } from "@/components/ui/Card";
 import { formatRupees } from "@/lib/money";
 import type { StaffBalanceTotals } from "@/server/services/staff-balance.service";
 import { BALANCE_MONEY_LABELS } from "@/server/validators/staff-balance";
-
-const CARD = "block rounded-xl border border-gray-200 bg-white p-5 shadow-sm transition hover:border-primary hover:shadow-md";
 
 /** One total that opens the balances page already filtered. */
 function Total({ href, label, amount, staff, tone }: { href: string; label: string; amount: number; staff: number; tone: string }) {
@@ -33,15 +32,15 @@ export function StaffBalancesCard({ totals }: { totals: StaffBalanceTotals | nul
 
     if (!totals) {
         return (
-            <Link href="/staff/balances" className={`${CARD} flex items-center justify-between`}>
+            <Card variant="dashboard" href="/staff/balances" className="flex items-center justify-between">
                 {title}
                 <ChevronRight className="w-5 h-5 text-gray-400" />
-            </Link>
+            </Card>
         );
     }
 
     return (
-        <div className={CARD}>
+        <Card variant="dashboard">
             <Link href="/staff/balances" className="flex items-center justify-between">
                 {title}
                 <ChevronRight className="w-5 h-5 text-gray-400" />
@@ -63,6 +62,6 @@ export function StaffBalancesCard({ totals }: { totals: StaffBalanceTotals | nul
                 />
             </div>
             <p className="mt-3 text-xs text-gray-500">Estimated until yesterday.</p>
-        </div>
+        </Card>
     );
 }

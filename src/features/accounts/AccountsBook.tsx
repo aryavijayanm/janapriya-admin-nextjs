@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Plus } from "lucide-react";
 import { DataTable } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { Modal } from "@/components/ui/Modal";
 import { Alert } from "@/components/ui/Alert";
 import { usePagination } from "@/hooks/usePagination";
@@ -59,13 +60,13 @@ export function AccountsBook({ day, today, dayData, monthRows, monthPagination, 
     return (
         <div className="space-y-6">
             {/* Card 1: title + Add entry, same row. */}
-            <section className="bg-white rounded-lg shadow-md p-4 sm:p-6 flex flex-wrap items-center justify-between gap-4">
+            <Card variant="section" as="section" className="flex flex-wrap items-center justify-between gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">ACCOUNTS BOOK</h2>
                 <Button onClick={() => setEditing({})}>
                     <Plus className="w-4 h-4" />
                     Add entry
                 </Button>
-            </section>
+            </Card>
 
             {removal.error && <Alert variant="error">{removal.error}</Alert>}
 
@@ -76,7 +77,7 @@ export function AccountsBook({ day, today, dayData, monthRows, monthPagination, 
             {canExport && <ExportAccountsCard today={todayText} />}
 
             {/* Card 4: this month so far. */}
-            <section className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+            <Card variant="section" as="section">
                 <h3 className="text-lg font-bold text-gray-800 mb-4">
                     This month: 01{todayText.slice(2)} to {todayText}
                 </h3>
@@ -90,7 +91,7 @@ export function AccountsBook({ day, today, dayData, monthRows, monthPagination, 
                     totalPages={monthPagination.totalPages}
                     onPageChange={setPage}
                 />
-            </section>
+            </Card>
 
             {editing && <AccountEntryDialog entry={editing.entry} today={todayText} onClose={() => setEditing(null)} />}
 

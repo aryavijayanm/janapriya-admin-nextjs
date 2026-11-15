@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ArrowLeft, ChevronRight } from "lucide-react";
 import type { ReactNode } from "react";
+import { Card } from "@/components/ui/Card";
 import type { OrderDetails as Order } from "@/server/services/order.service";
 
 /** "Showing the latest 5 of 12 · View all contracts →" -- only when some are hidden. */
@@ -25,7 +26,7 @@ export function ViewAllLink({ href, shown, total, label }: { href: string; shown
  */
 export function OrderSubpage({ order, title, children }: { order: Order; title: string; children: ReactNode }) {
     return (
-        <div className="max-w-5xl mx-auto bg-white rounded-2xl shadow-md overflow-hidden">
+        <Card variant="details" width="5xl">
             <div className="bg-linear-to-br from-pink-100 via-pink-50 to-purple-100 border-b border-gray-200 px-4 py-4 sm:px-8 sm:py-5">
                 <Link
                     href={`/orders/${order.code}`}
@@ -40,6 +41,6 @@ export function OrderSubpage({ order, title, children }: { order: Order; title: 
                 <p className="mt-1 text-gray-700">{order.customer.name}</p>
             </div>
             <div className="px-4 py-4 sm:px-8 sm:py-6">{children}</div>
-        </div>
+        </Card>
     );
 }

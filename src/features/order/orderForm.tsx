@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/Checkbox";
 import { FormField } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { Card } from "@/components/ui/Card";
 import { CustomerPicker } from "@/features/customer/CustomerPicker";
 import { createOrderAction, updateOrderAction } from "@/features/order/order.actions";
 import { useServerAction } from "@/hooks/useServerAction";
@@ -103,8 +104,7 @@ export default function OrderForm({ order, customer: preselected, services, canC
     };
 
     return (
-        // p-4 on phones, p-8 from sm: up -- same look on a laptop.
-        <div className="max-w-4xl mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md">
+        <Card variant="page" width="4xl">
             <h2 className="text-2xl font-bold mb-6 text-gray-800">
                 {isEditing ? `Edit Order · ${order.code}` : restartFrom ? `Restart order ${restartFrom.code}` : "New Order"}
             </h2>
@@ -180,6 +180,6 @@ export default function OrderForm({ order, customer: preselected, services, canC
                     </Alert>
                 )}
             </form>
-        </div>
+        </Card>
     );
 }

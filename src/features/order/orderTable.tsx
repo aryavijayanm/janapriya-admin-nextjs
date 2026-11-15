@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ClipboardPlus, Search } from "lucide-react";
 import { DataTable } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import type { TableColumn } from "@/components/ui/Table";
 import { usePagination } from "@/hooks/usePagination";
@@ -97,8 +98,7 @@ export default function OrderTable({ orders, pagination, canSeeOutside }: OrderT
     ];
 
     return (
-        // p-4 on phones, p-8 from sm: up -- same look on a laptop.
-        <div className="max-w-full mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md">
+        <Card variant="page" width="full">
             <div className="flex flex-wrap items-center justify-between gap-4 mb-6">
                 <h2 className="text-2xl font-bold text-gray-800">All Orders</h2>
                 <Button onClick={() => router.push("/orders/new")}>
@@ -167,6 +167,6 @@ export default function OrderTable({ orders, pagination, canSeeOutside }: OrderT
                 onPageChange={setPage}
                 onRowClick={(o) => router.push(`/orders/${o.code}`)}
             />
-        </div>
+        </Card>
     );
 }

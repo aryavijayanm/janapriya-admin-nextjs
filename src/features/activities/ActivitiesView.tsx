@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
+import { Card } from "@/components/ui/Card";
 import { DayNav } from "@/components/ui/DayNav";
 import { Tabs, type TabItem } from "@/components/ui/Tabs";
 import type { DayActivities } from "@/server/services/activities.service";
@@ -45,17 +46,17 @@ export function ActivitiesView({ day, today, tab, activities }: ActivitiesViewPr
 
     return (
         <div className="space-y-6">
-            <section className="bg-white rounded-lg shadow-md p-4 sm:p-6 space-y-4">
+            <Card variant="section" as="section" className="space-y-4">
                 <h2 className="text-2xl font-bold text-gray-800">ACTIVITIES</h2>
                 <DayNav day={day} today={today} allowFuture />
-            </section>
+            </Card>
 
-            <section className="bg-white rounded-lg shadow-md p-4 sm:p-6 space-y-4">
+            <Card variant="section" as="section" className="space-y-4">
                 <Tabs tabs={tabs} value={current} onChange={setTab} />
                 {current === "orders" && <OrderActivityList items={activities.orders} future={day > today} />}
                 {current === "staff" && <StaffActivityList items={activities.staff} />}
                 {current === "money" && activities.money && <AccountDaySummary data={activities.money} columns={MONEY_COLUMNS} />}
-            </section>
+            </Card>
         </div>
     );
 }

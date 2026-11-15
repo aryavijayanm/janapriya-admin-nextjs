@@ -7,6 +7,7 @@ import { TextArea } from "@/components/ui/TextArea";
 import { FormField } from "@/components/ui/FormField";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { Card } from "@/components/ui/Card";
 import { PossibleDuplicatesModal } from "@/components/ui/PossibleDuplicatesModal";
 import { createCustomerAction, updateCustomerAction } from "@/features/customer/customer.actions";
 import { useServerAction } from "@/hooks/useServerAction";
@@ -129,8 +130,7 @@ export default function CustomerForm({ customer }: CustomerFormProps) {
     };
 
     return (
-        // p-4 on phones, p-8 from sm: up -- same look on a laptop.
-        <div className="max-w-6xl mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md">
+        <Card variant="page" width="6xl">
             <h2 className="text-2xl font-bold mb-6 text-gray-800">
                 {isEditing ? `Edit Customer · ${formatCustomerCode(customer.id)}` : "Enter Customer Details"}
             </h2>
@@ -253,6 +253,6 @@ export default function CustomerForm({ customer }: CustomerFormProps) {
                     </Alert>
                 )}
             </form>
-        </div>
+        </Card>
     );
 }

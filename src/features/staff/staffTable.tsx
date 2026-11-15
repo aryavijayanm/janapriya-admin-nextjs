@@ -7,6 +7,7 @@ import { DataTable } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Alert } from "@/components/ui/Alert";
+import { Card } from "@/components/ui/Card";
 import type { TableColumn } from "@/components/ui/Table";
 import { usePagination } from "@/hooks/usePagination";
 import { useSort } from "@/hooks/useSort";
@@ -159,8 +160,7 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
     ];
 
     return (
-        // p-4 on phones, p-8 from sm: up -- same look on a laptop.
-        <div className="max-w-full mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md">
+        <Card variant="page" width="full">
             {/* Stacked on phones, side by side from lg: up (the old layout). */}
             <div className="flex flex-col gap-4 mb-6 lg:flex-row lg:items-start lg:justify-between">
                 <h2 className="text-2xl font-bold text-gray-800">All Staff</h2>
@@ -210,6 +210,6 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
                 sortDir={sortDir}
                 onSortChange={(key) => (key === "recent" ? toggleSortOnOff(key, "desc") : toggleSort(key))}
             />
-        </div>
+        </Card>
     );
 }

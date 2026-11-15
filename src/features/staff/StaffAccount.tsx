@@ -4,6 +4,7 @@ import { Fragment, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { Check, ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
 import { formatDate, formatDateTime } from "@/lib/date";
 import { formatRupees } from "@/lib/money";
 import type { ClearedPeriodView, DutyRowView, StaffAccount as Account, StaffEntryView } from "@/server/services/staff-account.service";
@@ -181,7 +182,7 @@ export function StaffAccount({ account, header }: { account: Account; header: Re
     const toSettleDays = toSettle.rows.reduce((sum, r) => sum + r.halfDays, 0);
 
     return (
-        <div className="max-w-6xl mx-auto bg-white rounded-2xl shadow-md overflow-hidden">
+        <Card variant="details" width="6xl">
             {/* ===== The shared staff header (same as the profile page) ===== */}
             {header}
 
@@ -312,6 +313,6 @@ export function StaffAccount({ account, header }: { account: Account; header: Re
                     onClose={() => setDialog(null)}
                 />
             )}
-        </div>
+        </Card>
     );
 }

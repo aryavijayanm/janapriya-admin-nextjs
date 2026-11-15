@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { Card } from "@/components/ui/Card";
 import { FormField } from "@/components/ui/FormField";
 import { DateTextInput } from "@/components/ui/DateTextInput";
 import { parseDayMonthYear } from "@/lib/date";
@@ -47,7 +48,7 @@ export function ExportAccountsCard({ today }: { today: string }) {
     };
 
     return (
-        <section className="bg-white rounded-lg shadow-md p-4 sm:p-6">
+        <Card variant="section" as="section">
             <h3 className="text-xs font-bold uppercase tracking-wider text-gray-500 mb-3">Download Excel</h3>
             <form onSubmit={handleDownload} className="flex flex-wrap items-end gap-4">
                 <FormField label="From" htmlFor="export-from">
@@ -62,6 +63,6 @@ export function ExportAccountsCard({ today }: { today: string }) {
                 </Button>
             </form>
             {error && <Alert variant="error" className="mt-3">{error}</Alert>}
-        </section>
+        </Card>
     );
 }

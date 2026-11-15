@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Table, type TableColumn } from "@/components/ui/Table";
 import { Button } from "@/components/ui/Button";
 import { Alert } from "@/components/ui/Alert";
+import { Card } from "@/components/ui/Card";
 import { UserFormModal } from "@/features/user/UserFormModal";
 import { setUserActiveAction } from "@/features/user/user.actions";
 import { useServerAction } from "@/hooks/useServerAction";
@@ -85,8 +86,7 @@ export default function UserTable({ users, currentUserId }: UserTableProps) {
 
     return (
         <>
-            {/* p-4 on phones, p-8 from sm: up -- same look on a laptop. */}
-            <div className="max-w-5xl mx-auto p-4 sm:p-8 bg-white rounded-lg shadow-md">
+            <Card variant="page" width="5xl">
                 <h2 className="text-2xl font-bold mb-6 text-gray-800">Manage Users</h2>
 
                 {error && <Alert variant="error" className="mb-4">{error}</Alert>}
@@ -100,7 +100,7 @@ export default function UserTable({ users, currentUserId }: UserTableProps) {
                 <div className="mt-4">
                     <Button onClick={handleAdd}>+ Add User</Button>
                 </div>
-            </div>
+            </Card>
 
             {/* Rendered only while open, and keyed by the user being edited, so
                 the form starts fresh on every open from its initial props. The
