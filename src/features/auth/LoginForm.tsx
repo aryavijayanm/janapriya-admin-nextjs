@@ -15,7 +15,7 @@ const initialState: LoginState = { error: null };
 // Frosted to match the glass box: 60% white with a white edge, turning
 // solid white while typing so the text is crisp.
 const inputClass =
-    "block w-full pl-12 py-3 border border-white/70 rounded-xl leading-5 bg-white/60 placeholder-gray-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary sm:text-sm transition-all text-black";
+    "block w-full pl-12 py-3 border border-white/70 rounded-xl leading-5 bg-white/60 placeholder-gray-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary sm:text-sm transition-all text-black";
 
 export function LoginForm() {
     // useActionState replaces the old hand-rolled trio of
