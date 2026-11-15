@@ -12,8 +12,10 @@ const initialState: LoginState = { error: null };
 // Shared by both inputs. Kept as the old login page's own larger style
 // (rounded-xl, py-3, pl-12) rather than the generic <Input> component, which
 // is smaller -- this page's look is deliberately its own.
+// Frosted to match the glass box: 60% white with a white edge, turning
+// solid white while typing so the text is crisp.
 const inputClass =
-    "block w-full pl-12 py-3 border border-gray-300 rounded-xl leading-5 bg-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary sm:text-sm transition-all text-black";
+    "block w-full pl-12 py-3 border border-white/70 rounded-xl leading-5 bg-white/60 placeholder-gray-500 focus:bg-white focus:outline-none focus:ring-2 focus:ring-primary focus:border-primary sm:text-sm transition-all text-black";
 
 export function LoginForm() {
     // useActionState replaces the old hand-rolled trio of
@@ -30,10 +32,17 @@ export function LoginForm() {
     const [password, setPassword] = useState("");
 
     return (
-        <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
-            {/* p-6 on phones, p-8 from sm: up -- the 288px logo plus p-8 padding
+        // No background here: the page behind it (login/page.tsx) paints the
+        // gradient and colour glows. "relative" keeps this above them.
+        <div className="relative min-h-screen flex items-center justify-center px-4 py-8">
+            {/* The glass box ("glassmorphism"):
+                  bg-white/45        see-through white, so the glows show through
+                  backdrop-blur-xl   blurs whatever is behind it -> frosted glass
+                  border-white/70    a bright edge, like light catching glass
+                  shadow tinted plum so it feels part of the palette, not gray
+                p-6 on phones, p-8 from sm: up -- the 288px logo plus p-8 padding
                 only just fits a 390px screen otherwise. */}
-            <div className="max-w-md w-full space-y-8 bg-white p-6 sm:p-8 rounded-2xl shadow-xl">
+            <div className="max-w-md w-full space-y-8 rounded-3xl border border-white/70 bg-white/45 p-6 shadow-2xl shadow-brand-plum/15 backdrop-blur-xl sm:p-8 motion-safe:animate-modal-in">
                 {/* Logo */}
                 <div className="flex flex-col items-center">
                     <div className="relative w-72 h-36 mb-2 max-w-full">
@@ -48,6 +57,8 @@ export function LoginForm() {
                         />
                     </div>
                 </div>
+
+                <p className="-mt-4 text-center text-sm text-gray-600">Welcome back! Please log in to continue.</p>
 
                 <form className="mt-8 space-y-6" action={formAction}>
                     {state.error && <Alert variant="error">{state.error}</Alert>}
@@ -110,7 +121,10 @@ export function LoginForm() {
                     <Button
                         type="submit"
                         isLoading={isPending}
-                        className="w-full rounded-xl py-3 shadow-md shadow-pink-200"
+                        // The logo's pink -> purple sweep (same pair as the sidebar's
+                        // active item). The gradient paints over the button's flat
+                        // pink; on hover it glows a little stronger.
+                        className="w-full rounded-xl py-3 bg-linear-to-r from-primary to-primary-end shadow-lg shadow-brand-pink/30 hover:shadow-xl hover:shadow-brand-pink/40"
                     >
                         Login
                     </Button>
