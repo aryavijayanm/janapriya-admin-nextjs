@@ -25,10 +25,15 @@
   /*{ For Text Color}*/
   --color-text: #171717;
 
-  /* Sidebar Colors */
-  /*--color-sidebar-bg: #2e2d2d;*/ /* old charcoal: swap back to undo the plum */
-  --color-sidebar-bg: #2a1d2a;
+  /* Sidebar Colors -- matte black, charcoal and dark purple.
+     The solid colour is the gradient's starting black (used wherever a plain
+     colour is needed). Undo: solid plum #2a1d2a (old charcoal #2e2d2d), and
+     put bg-sidebar-bg back on the <aside> in Sidebar.tsx. */
+  --color-sidebar-bg: #111014;
   --color-sidebar-text: #f5f5f5;
+  /* Deep charcoal black at the top, easing through charcoal into a subtle
+     dark purple at the bottom. */
+  --sidebar-gradient: linear-gradient(170deg, #111014 0%, #552555 45%, #21182d 100%);
 
   /* App background (page area + the frames around the sidebar and navbar).
      Soft purple-gray, close to the old gray-200 (#e5e7eb): lighter top-left,
@@ -44,6 +49,12 @@
 @utility bg-app {
   background: var(--app-bg);
   background-attachment: fixed;
+}
+
+/* The sidebar's gradient background (a gradient can't be a colour token,
+   so it gets its own utility, like bg-app). */
+@utility bg-sidebar {
+  background: var(--sidebar-gradient);
 }
 
 /* The small number boxes inside every dashboard card ("Money to collect",

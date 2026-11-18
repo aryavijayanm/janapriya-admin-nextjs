@@ -92,10 +92,11 @@ export function Sidebar({ user, isOpen }: SidebarProps) {
             // Phone drawer: only the right-side corners are rounded (the left side is
             // flat against the screen edge). Laptop: it sits in a 4px frame
             // (see DashboardLayout), so all four corners are rounded.
-            className={`h-full bg-sidebar-bg text-sidebar-text overflow-y-auto no-scrollbar rounded-r-2xl lg:rounded-2xl`}
+            className={`h-full bg-sidebar text-sidebar-text overflow-y-auto no-scrollbar rounded-r-2xl lg:rounded-2xl`}
         >
-            {/* Logo Section - same colour as the sidebar (the logo PNG is transparent) */}
-            <div className="h-16 flex items-center justify-center bg-sidebar-bg overflow-hidden">
+            {/* Logo Section - no background of its own, so the sidebar's gradient
+                runs unbroken behind it (the logo PNG is transparent) */}
+            <div className="h-16 flex items-center justify-center overflow-hidden">
                 {/* The container shrinks, but the inner image stays wide to create the "cut" effect */}
                 <div className={`relative h-16 transition-all duration-300 ${isOpen ? "w-40" : "w-14"} overflow-hidden`}>
                     <div className="absolute left-0 top-0 h-full w-40">
@@ -134,8 +135,10 @@ export function Sidebar({ user, isOpen }: SidebarProps) {
 }
 
 // The ONE place the active-item look is defined.
-// Pink for the first 70%, then fades into purple at the right edge only.
-const ACTIVE_BG = "bg-linear-to-r from-primary from-70% to-primary-end";
+// Violet glass: a see-through violet tint with a thin brand-pink bar on the
+// left (an inset shadow, so it adds no width and nothing shifts).
+// Undo (pink -> purple gradient): "bg-linear-to-r from-primary from-70% to-primary-end"
+const ACTIVE_BG = "bg-violet-400/20 shadow-[inset_4px_0_0_var(--background)]";
 
 function MenuLink({ item: { href, icon: Icon, label }, isOpen, isActive }: { item: MenuItem; isOpen: boolean; isActive: boolean }) {
     return (
@@ -145,7 +148,7 @@ function MenuLink({ item: { href, icon: Icon, label }, isOpen, isActive }: { ite
                 } py-2 rounded-xl transition-colors text-sm ${isActive
                     ? `${ACTIVE_BG} text-white`
                     // Faint see-through pink: as soft as white/10, but warm.
-                    : "hover:bg-primary/20"
+                    : "hover:bg-white/15"
                 }`}
             title={!isOpen ? label : undefined}
             aria-current={isActive ? "page" : undefined}
