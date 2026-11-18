@@ -152,12 +152,12 @@
       background: color-mix(in oklab, var(--color-primary) 16%, white);
       font-weight: 500;
     }
-    /* Pointed at / moved to with the keyboard: the primary pink (same as
-       the primary buttons), white text so it stays readable.
+    /* Pointed at / moved to with the keyboard: the primary hover colour
+       (same as a primary button on hover), white text so it stays readable.
        After :checked on purpose, so it also wins on the chosen option. */
     option:hover,
     option:focus-visible {
-      background: var(--color-primary);
+      background: var(--color-primary-hover);
       color: #ffffff;
       outline: none;
     }
