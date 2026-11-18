@@ -58,7 +58,9 @@ export function AccountsBook({ day, today, dayData, monthRows, monthPagination, 
     const todayText = formatDate(today);
 
     return (
-        <div className="space-y-6">
+        // Same gap between the cards as around the navbar and page (8px phone /
+        // 12px laptop -- see DashboardLayout). Undo: "space-y-6".
+        <div className="space-y-2 lg:space-y-3">
             {/* Card 1: title + Add entry, same row. */}
             <Card variant="section" as="section" className="flex flex-wrap items-center justify-between gap-4">
                 <h2 className="text-2xl font-bold text-gray-800">ACCOUNTS BOOK</h2>

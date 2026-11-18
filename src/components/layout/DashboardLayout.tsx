@@ -82,10 +82,17 @@ export function DashboardLayout({ user, children }: { user: AuthUser; children: 
                     around the navbar is solid -- content scrolling up hides behind it
                     instead of showing through. bg-app is pinned to the screen, so the
                     strip's gradient lines up with the page's exactly. */}
-                <div className="sticky top-0 z-40 bg-app p-1">
+                {/* The same gap on all four sides of the navbar: 8px phone / 12px
+                    laptop. Its bottom padding is also the gap down to the page
+                    (main has no top padding). Undo: "p-1" here + "p-4 lg:p-8" on main.
+                    Change this gap together with main's padding below. */}
+                <div className="sticky top-0 z-40 bg-app p-2 lg:p-3">
                     <Navbar user={user} onToggleSidebar={toggleSidebar} />
                 </div>
-                <main className="flex-1 p-4 lg:p-8 overflow-y-auto">
+                {/* Same gap as around the navbar (8px phone / 12px laptop) on the
+                    sides and bottom, so the page's edges line up with the navbar's.
+                    No top padding: the navbar strip's bottom padding is that gap. */}
+                <main className="flex-1 px-2 pb-2 lg:px-3 lg:pb-3 overflow-y-auto">
                     {children}
                 </main>
             </div>
