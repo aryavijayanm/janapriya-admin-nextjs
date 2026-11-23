@@ -38,7 +38,8 @@ model User {
   last_login_at DateTime? @db.Timestamptz
 
   sessions             Session[]
-  checkedContracts     Contract[] // contracts whose rate this user confirmed
+  checkedContracts     Contract[]          @relation("ContractRateCheckedBy") // contracts whose rate this user confirmed
+  remindedContracts    Contract[]          @relation("ContractReminderSentBy") // WhatsApp payment reminders sent
   recordedPayments     Payment[]           @relation("PaymentRecordedBy")
   voidedPayments       Payment[]           @relation("PaymentVoidedBy")
   recordedRefunds      Refund[]            @relation("RefundRecordedBy")
@@ -262,7 +263,15 @@ model Contract {
   // user never fails because they once confirmed a rate.
   rateCheckedAt   DateTime?     @db.Timestamptz
   rateCheckedById Int?
-  rateCheckedBy   User?         @relation(fields: [rateCheckedById], references: [id], onDelete: SetNull)
+  rateCheckedBy   User?         @relation("ContractRateCheckedBy", fields: [rateCheckedById], references: [id], onDelete: SetNull)
+  // WhatsApp payment reminder -- at most ONE per contract. Saved when a person
+  // presses "Mark as sent" after WhatsApp opened (a wa.me link can't tell the
+  // app whether Send was really pressed). Null = no reminder yet. Timestamptz:
+  // an exact moment, shown in Kerala time on screen. SetNull: deleting a user
+  // never fails because they once sent a reminder.
+  reminderSentAt   DateTime?    @db.Timestamptz
+  reminderSentById Int?
+  reminderSentBy   User?        @relation("ContractReminderSentBy", fields: [reminderSentById], references: [id], onDelete: SetNull)
   // What the customer has paid. Calculated from the payments below (voided
   // ones don't count) and stored -- recalculated in the same transaction as
   // every payment or rate change, like servedDays.

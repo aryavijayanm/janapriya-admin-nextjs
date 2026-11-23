@@ -18,6 +18,7 @@ import type { PaginatedResult } from "@/server/db/paginate";
 import type { PaymentsContractRow, PaymentsOrderRow } from "@/server/services/payments-list.service";
 import { PAYMENT_MODE_LABELS } from "@/server/validators/payment";
 import { PAYMENTS_FILTERS, PAYMENTS_FILTER_LABELS, type PaymentsListQuery } from "@/server/validators/payments-list";
+import { PaymentReminder } from "./PaymentReminder";
 
 interface PaymentsTableProps {
     orders: PaymentsOrderRow[];
@@ -122,6 +123,8 @@ export function PaymentsTable({ orders, pagination, query, showBranch, showRefun
         },
         { header: "Paid on", accessor: ({ contract }) => (contract.lastPayment ? formatDate(contract.lastPayment.paidOn) : "—") },
         { header: "How", accessor: ({ contract }) => (contract.lastPayment ? PAYMENT_MODE_LABELS[contract.lastPayment.mode] : "—") },
+        // WhatsApp payment reminder: Not paid / Partly paid rows only (empty otherwise).
+        { header: "Reminder", accessor: ({ order, contract }) => <PaymentReminder order={order} contract={contract} /> },
     ];
 
     return (

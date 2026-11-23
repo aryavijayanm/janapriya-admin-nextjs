@@ -6,12 +6,14 @@ import { todayInKerala } from "@/server/domain/age";
 import { formatDayMonthYear, fromIsoDate, toDayNumber } from "@/server/domain/days";
 import { NotFoundError, ValidationError } from "@/server/domain/errors";
 import { balanceDue, contractAmountDue } from "@/server/domain/payments";
+import { needsPaymentReminder } from "@/server/domain/payment-reminder";
 import { ALL_ROLES, assertRole, type AuthUser } from "@/server/services/authz";
 import { formatRupees } from "@/lib/money";
 import {
     getVisibleOrderForUpdate,
     lockContractAndGetPaid,
     recalculatePaymentStatus,
+    visibleOrders,
 } from "@/server/services/order.service";
 import type { PaymentInput } from "@/server/validators/payment";
 
@@ -140,4 +142,34 @@ export async function voidPayment(
         await recalculatePaymentStatus(tx, payment.contractId);
         return { code: order.code };
     });
+}
+
+/**
+ * Records that a WhatsApp payment reminder was sent for one contract -- at
+ * most once per contract. The person presses "Mark as sent" after WhatsApp
+ * opened; the app itself can't see the message go out.
+ *
+ * The write only happens while reminderSentAt is still empty (updateMany with
+ * that condition), so if two people press it at the same moment, one wins and
+ * the other gets "already sent" -- no second, overwriting record.
+ */
+export async function markPaymentReminderSent(db: Db, user: AuthUser, contractId: number): Promise<void> {
+    assertRole(user, PAYMENT_MODULE_ROLES);
+
+    // visibleOrders: the branch rule -- an OUTSIDER never touches an OUTSIDE order.
+    const contract = await db.contract.findFirst({
+        where: { id: contractId, order: visibleOrders(user) },
+        select: { paymentStatus: true, startDate: true },
+    });
+    if (!contract) throw new NotFoundError("Contract not found");
+    // The same rule that shows the button in the payments table.
+    if (!needsPaymentReminder(contract)) {
+        throw new ValidationError("This contract is fully paid or hasn't started, so no reminder is needed");
+    }
+
+    const { count } = await db.contract.updateMany({
+        where: { id: contractId, reminderSentAt: null },
+        data: { reminderSentAt: new Date(), reminderSentById: user.id },
+    });
+    if (count === 0) throw new ValidationError("A reminder for this contract was already sent");
 }

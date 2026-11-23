@@ -110,6 +110,8 @@ export interface PaymentsContractRow {
     contractNumber: number;
     /** Due date = the contract's start date (null while pending). */
     startDate: Date | null;
+    /** The contract's (expected) last day -- shown in the WhatsApp reminder. */
+    endDate: Date | null;
     rate: number;
     /** After End order: the charge for the days served (null = running, the full rate). */
     charge: number | null;
@@ -124,6 +126,8 @@ export interface PaymentsContractRow {
     writtenOffAmount: number;
     /** The latest payment that counts: "Paid on" and "How". */
     lastPayment: { paidOn: Date; mode: PaymentMode } | null;
+    /** The WhatsApp payment reminder, once sent (at most one per contract). */
+    reminder: { sentAt: Date; sentBy: string | null } | null;
 }
 
 export interface PaymentsOrderRow {
@@ -131,7 +135,8 @@ export interface PaymentsOrderRow {
     code: string;
     branch: Branch;
     ended: boolean;
-    customer: { id: number; name: string };
+    /** Phone numbers: where the WhatsApp reminder can go. */
+    customer: { id: number; name: string; contactNumber1: string; contactNumber2: string | null };
     contracts: PaymentsContractRow[];
 }
 
@@ -162,12 +167,15 @@ export async function listPayments(
             code: true,
             branch: true,
             endDate: true,
-            customer: { select: { id: true, name: true } },
+            customer: { select: { id: true, name: true, contactNumber1: true, contactNumber2: true } },
             contracts: {
                 select: {
                     id: true,
                     contractNumber: true,
                     startDate: true,
+                    endDate: true,
+                    reminderSentAt: true,
+                    reminderSentBy: { select: { name: true } },
                     rate: true,
                     charge: true,
                     writtenOffAmount: true,
@@ -192,7 +200,7 @@ export async function listPayments(
         const order = byId.get(id);
         if (!order) return [];
         const rows = contractsToShow(order.contracts, query.status, refunds).map(
-            ({ payments, refundedAmount, ...c }) => {
+            ({ payments, refundedAmount, reminderSentAt, reminderSentBy, ...c }) => {
                 const amountDue = contractAmountDue(c);
                 return {
                     ...c,
@@ -200,6 +208,8 @@ export async function listPayments(
                     balance: balanceDue(amountDue, c.paidAmount),
                     refund: refunds ? refundDue({ charge: c.charge, paidAmount: c.paidAmount, refundedAmount }) : 0,
                     lastPayment: payments[0] ?? null,
+                    // sentBy null = that user was deleted since (the row stays, the name doesn't).
+                    reminder: reminderSentAt ? { sentAt: reminderSentAt, sentBy: reminderSentBy?.name ?? null } : null,
                 };
             },
         );
