@@ -16,6 +16,8 @@
 # next.js
 /.next/
 /out/
+# Written by `next dev` itself (rules for AI agents) -- regenerated, not ours to keep
+/AGENTS.md
 
 # production
 /build
