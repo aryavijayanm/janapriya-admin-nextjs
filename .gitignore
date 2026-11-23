@@ -45,3 +45,6 @@ next-env.d.ts
 
 # uploaded files (staff photos) -- personal data, never committed
 /.uploads/
+
+# project reports -- kept on this computer only, never pushed
+/docs/
