@@ -98,6 +98,18 @@
     from { opacity: 0; }
     to { opacity: 1; }
   }
+
+  /* The tear on the "page not found" face (components/ui/CryingFace.tsx):
+     appears under the eye, slides down the cheek, fades out, repeats.
+     Used as "motion-safe:animate-tear", so it's still for anyone who has
+     switched animations off. */
+  --animate-tear: tear 2.4s ease-in infinite;
+  @keyframes tear {
+    0% { opacity: 0; transform: translateY(0); }
+    15% { opacity: 1; }
+    75% { opacity: 1; transform: translateY(22px); }
+    100% { opacity: 0; transform: translateY(28px); }
+  }
 }
 
 @layer components {
@@ -179,12 +191,12 @@
   }
 }
 
-@media (prefers-color-scheme: dark) {
+/*@media (prefers-color-scheme: dark) {
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
   }
-}
+} */
 
 body {
   background: var(--background);

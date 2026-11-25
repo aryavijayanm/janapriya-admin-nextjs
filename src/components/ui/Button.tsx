@@ -43,6 +43,27 @@ const sizeClasses: Record<ButtonSize, string> = {
     lg: "px-5 py-3 text-base",
 };
 
+/**
+ * The button look as a class string, for a link that should LOOK like a
+ * button (e.g. <Link href="/dashboard" className={buttonClasses({ variant: "secondary" })}>).
+ * A real link keeps right-click / open-in-new-tab working, which a button that
+ * calls router.push() can't. Button itself uses this too, so both stay identical.
+ */
+export function buttonClasses({
+    variant = "primary",
+    size = "md",
+    className,
+}: { variant?: ButtonVariant; size?: ButtonSize; className?: string } = {}) {
+    return cn(
+        "inline-flex items-center justify-center gap-2 rounded-lg font-medium shadow-sm transition-all duration-200",
+        "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
+        "disabled:opacity-50 disabled:cursor-not-allowed",
+        variantClasses[variant],
+        sizeClasses[size],
+        className,
+    );
+}
+
 export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
     (
         {
@@ -60,14 +81,7 @@ export const Button = forwardRef<HTMLButtonElement, ButtonProps>(
             <button
                 ref={ref}
                 disabled={disabled || isLoading}
-                className={cn(
-                    "inline-flex items-center justify-center gap-2 rounded-lg font-medium shadow-sm transition-all duration-200",
-                    "focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2",
-                    "disabled:opacity-50 disabled:cursor-not-allowed",
-                    variantClasses[variant],
-                    sizeClasses[size],
-                    className
-                )}
+                className={buttonClasses({ variant, size, className })}
                 {...props}
             >
                 {isLoading && <Spinner size="sm" />}
