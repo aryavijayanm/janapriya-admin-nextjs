@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Info, Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { DataTable } from "@/components/ui/DataTable";
@@ -9,6 +9,7 @@ import { FilterGroup } from "@/components/ui/FilterGroup";
 import { Input } from "@/components/ui/Input";
 import type { TableColumn } from "@/components/ui/Table";
 import { usePagination } from "@/hooks/usePagination";
+import { useUrlParams } from "@/hooks/useUrlParams";
 import { formatRupees } from "@/lib/money";
 import type { PaginatedResult } from "@/server/db/paginate";
 import type { StaffBalanceRow } from "@/server/services/staff-balance.service";
@@ -27,18 +28,17 @@ interface StaffBalancesProps {
 // live in the URL (bookmarkable; the page re-renders on the server).
 export function StaffBalances({ rows, pagination, query }: StaffBalancesProps) {
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const { setPage } = usePagination();
+    const { setParams, getOption, isPending: filtering } = useUrlParams();
+    const { setPage, isPending: paging } = usePagination();
     const [search, setSearch] = useState(query.search ?? "");
 
-    /** Changes one URL parameter and goes back to page 1 (a new filter = a new list). */
-    const setParam = (key: string, value: string, defaultValue = "") => {
-        const params = new URLSearchParams(searchParams.toString());
-        if (value === defaultValue) params.delete(key);
-        else params.set(key, value);
-        params.delete("page");
-        router.push(`?${params.toString()}`);
-    };
+    /** Changes one URL parameter (its default value removes it); back to page 1. */
+    const setParam = (key: string, value: string, defaultValue = "") =>
+        setParams({ [key]: value === defaultValue ? null : value });
+
+    // Read through the hook, so a clicked filter shows as selected at once.
+    const money = getOption("money", BALANCE_MONEY_FILTERS, query.money);
+    const duty = getOption("duty", STAFF_DUTY_FILTERS, query.duty);
 
     const columns: TableColumn<StaffBalanceRow>[] = [
         {
@@ -95,14 +95,14 @@ export function StaffBalances({ rows, pagination, query }: StaffBalancesProps) {
                         label="Money"
                         options={BALANCE_MONEY_FILTERS}
                         labels={BALANCE_MONEY_LABELS}
-                        value={query.money}
+                        value={money}
                         onChange={(v) => setParam("money", v, "all")}
                     />
                     <FilterGroup
                         label="Duty"
                         options={STAFF_DUTY_FILTERS}
                         labels={STAFF_DUTY_LABELS}
-                        value={query.duty}
+                        value={duty}
                         onChange={(v) => setParam("duty", v, "all")}
                     />
                 </div>
@@ -129,7 +129,7 @@ export function StaffBalances({ rows, pagination, query }: StaffBalancesProps) {
                 columns={columns}
                 data={rows}
                 getRowKey={(s) => s.id}
-                isLoading={false}
+                isPending={filtering || paging}
                 emptyMessage="No staff with a balance for these filters."
                 currentPage={pagination.page}
                 totalPages={pagination.totalPages}

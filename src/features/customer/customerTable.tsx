@@ -27,8 +27,8 @@ interface CustomerTableProps {
 // on the server with the new data.
 export default function CustomerTable({ customers, pagination }: CustomerTableProps) {
     const router = useRouter();
-    const { setPage } = usePagination();
-    const { sortBy, sortDir, toggleSort } = useSort();
+    const { setPage, isPending: paging } = usePagination();
+    const { sortBy, sortDir, toggleSort, isPending: sorting } = useSort();
     // Which row's Enable/Disable is in flight, so only that button spins.
     const [togglingId, setTogglingId] = useState<number | null>(null);
     const { run, error } = useServerAction();
@@ -109,8 +109,7 @@ export default function CustomerTable({ customers, pagination }: CustomerTablePr
                 columns={columns}
                 data={customers}
                 getRowKey={(c) => c.id}
-                // Data arrives already loaded with the page.
-                isLoading={false}
+                isPending={paging || sorting}
                 emptyMessage="No customers registered yet."
                 currentPage={pagination.page}
                 totalPages={pagination.totalPages}

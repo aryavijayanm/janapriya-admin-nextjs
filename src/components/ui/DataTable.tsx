@@ -7,7 +7,13 @@ interface DataTableProps<T> {
     columns: TableColumn<T>[];
     data: T[];
     getRowKey: (row: T) => Key;
-    isLoading: boolean;
+    /**
+     * True while a filter / sort / page change is loading the next rows (the
+     * `isPending` from useUrlParams, usePagination or useSort). The rows stay
+     * on screen, dimmed, with a spinner over them -- swapping them for a big
+     * spinner would make the page jump.
+     */
+    isPending?: boolean;
     emptyMessage?: string;
     currentPage: number;
     totalPages: number;
@@ -18,15 +24,19 @@ interface DataTableProps<T> {
     onSortChange?: (key: string) => void;
 }
 
-// Thin composite bundling the already-existing Table + the new Pagination,
-// plus a loading state -- so each feature's table component doesn't
-// re-implement "spinner while loading, else table + pagination" every time.
+// Thin composite bundling Table + Pagination + the "next rows are loading"
+// look -- so each feature's table component doesn't re-implement it.
 // No business logic of its own.
+//
+// The loading look is plain CSS keyed on a `data-pending` attribute (the
+// pattern from the Next.js 16 docs): the attribute is on this element, the
+// dimming uses Tailwind's group-data-pending: variant. Both wait 150ms, so a
+// fast load doesn't flicker.
 export function DataTable<T>({
     columns,
     data,
     getRowKey,
-    isLoading,
+    isPending = false,
     emptyMessage,
     currentPage,
     totalPages,
@@ -36,27 +46,30 @@ export function DataTable<T>({
     sortDir,
     onSortChange,
 }: DataTableProps<T>) {
-    if (isLoading) {
-        return (
-            <div className="flex items-center justify-center py-12">
-                <Spinner size="lg" />
-            </div>
-        );
-    }
-
     return (
-        <>
-            <Table
-                columns={columns}
-                data={data}
-                getRowKey={getRowKey}
-                emptyMessage={emptyMessage}
-                onRowClick={onRowClick}
-                sortBy={sortBy}
-                sortDir={sortDir}
-                onSortChange={onSortChange}
-            />
-            <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={onPageChange} />
-        </>
+        <div className="group relative" data-pending={isPending ? "" : undefined} aria-busy={isPending || undefined}>
+            <div className="transition-opacity duration-200 group-data-pending:pointer-events-none group-data-pending:opacity-50 group-data-pending:delay-150">
+                <Table
+                    columns={columns}
+                    data={data}
+                    getRowKey={getRowKey}
+                    emptyMessage={emptyMessage}
+                    onRowClick={onRowClick}
+                    sortBy={sortBy}
+                    sortDir={sortDir}
+                    onSortChange={onSortChange}
+                />
+                <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={onPageChange} />
+            </div>
+            {isPending && (
+                <div
+                    className="pointer-events-none absolute inset-x-0 top-12 flex justify-center motion-safe:animate-fade-in"
+                    // Same 150ms wait as the dimming; "both" keeps it hidden until then.
+                    style={{ animationDelay: "150ms", animationFillMode: "both" }}
+                >
+                    <Spinner size="lg" className="text-primary" />
+                </div>
+            )}
+        </div>
     );
 }

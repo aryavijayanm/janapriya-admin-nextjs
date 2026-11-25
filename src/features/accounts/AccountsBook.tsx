@@ -41,7 +41,7 @@ interface AccountsBookProps {
 // payments, refunds and staff salary are read-only here -- they're changed
 // where they were entered, and the book follows by itself.
 export function AccountsBook({ day, today, dayData, monthRows, monthPagination, canExport }: AccountsBookProps) {
-    const { setPage } = usePagination();
+    const { setPage, isPending: paging } = usePagination();
     // Which popup is open: add (no entry) / edit (an entry), or nothing.
     const [editing, setEditing] = useState<{ entry?: AccountBookRow } | null>(null);
     const [deleting, setDeleting] = useState<AccountBookRow | null>(null);
@@ -87,7 +87,7 @@ export function AccountsBook({ day, today, dayData, monthRows, monthPagination, 
                     columns={accountColumns({ showDate: true, ...handlers })}
                     data={monthRows}
                     getRowKey={(row) => `${row.source}-${row.id}`}
-                    isLoading={false}
+                    isPending={paging}
                     emptyMessage="Nothing this month yet."
                     currentPage={monthPagination.page}
                     totalPages={monthPagination.totalPages}

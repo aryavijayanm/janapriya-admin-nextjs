@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Info, Search } from "lucide-react";
 import { Card } from "@/components/ui/Card";
 import { DataTable } from "@/components/ui/DataTable";
@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/Input";
 import { Select } from "@/components/ui/Select";
 import type { TableColumn } from "@/components/ui/Table";
 import { usePagination } from "@/hooks/usePagination";
+import { useUrlParams } from "@/hooks/useUrlParams";
 import { formatDate } from "@/lib/date";
 import { formatRupees } from "@/lib/money";
 import { BRANCH_STYLES } from "@/features/order/orderTable";
@@ -49,18 +50,17 @@ function Pill({ label, className }: { label: string; className: string }) {
 // the customer and order appear on its first row. Filters live in the URL.
 export function PaymentsTable({ orders, pagination, query, showBranch, showRefunds }: PaymentsTableProps) {
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const { setPage } = usePagination();
+    const { searchParams, setParams, getOption, isPending: filtering } = useUrlParams();
+    const { setPage, isPending: paging } = usePagination();
     const [search, setSearch] = useState(query.search ?? "");
 
-    /** Changes one URL parameter and goes back to page 1 (a new filter = a new list). */
-    const setParam = (key: string, value: string, defaultValue = "") => {
-        const params = new URLSearchParams(searchParams.toString());
-        if (value === defaultValue) params.delete(key);
-        else params.set(key, value);
-        params.delete("page");
-        router.push(`?${params.toString()}`);
-    };
+    /** Changes one URL parameter (its default value removes it); back to page 1. */
+    const setParam = (key: string, value: string, defaultValue = "") =>
+        setParams({ [key]: value === defaultValue ? null : value });
+
+    // Read through the hook, so a clicked filter shows as selected at once.
+    const status = getOption("status", PAYMENTS_FILTERS, query.status);
+    const branch = searchParams.get("branch") ?? query.branch ?? "";
 
     const rows: Row[] = orders.flatMap((order) => order.contracts.map((contract, i) => ({ order, contract, first: i === 0 })));
     const filters = PAYMENTS_FILTERS.filter((f) => f !== "REFUND" || showRefunds);
@@ -142,13 +142,13 @@ export function PaymentsTable({ orders, pagination, query, showBranch, showRefun
                         label="Status"
                         options={filters}
                         labels={PAYMENTS_FILTER_LABELS}
-                        value={query.status}
+                        value={status}
                         onChange={(v) => setParam("status", v, "all")}
                     />
                     {showBranch && (
                         <Select
                             aria-label="Filter by branch"
-                            value={query.branch ?? ""}
+                            value={branch}
                             onChange={(e) => setParam("branch", e.target.value)}
                             className="md:w-40"
                         >
@@ -181,7 +181,7 @@ export function PaymentsTable({ orders, pagination, query, showBranch, showRefun
                 columns={columns}
                 data={rows}
                 getRowKey={({ contract }) => contract.id}
-                isLoading={false}
+                isPending={filtering || paging}
                 emptyMessage="No orders for these filters."
                 currentPage={pagination.page}
                 totalPages={pagination.totalPages}

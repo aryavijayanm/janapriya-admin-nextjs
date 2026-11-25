@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { Eye, Pencil } from "lucide-react";
 import { DataTable } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/Button";
@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/Card";
 import type { TableColumn } from "@/components/ui/Table";
 import { usePagination } from "@/hooks/usePagination";
 import { useSort } from "@/hooks/useSort";
+import { useUrlParams } from "@/hooks/useUrlParams";
 import { calculateAge } from "@/lib/date";
 import { setStaffStatusAction } from "@/features/staff/staff.actions";
 import { useServerAction } from "@/hooks/useServerAction";
@@ -34,9 +35,9 @@ interface StaffTableProps {
 // re-renders the page on the server with the new data.
 export default function StaffTable({ staff, pagination, services }: StaffTableProps) {
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const { setPage } = usePagination();
-    const { sortBy, sortDir, toggleSort, toggleSortOnOff } = useSort();
+    const { searchParams, setParams, getOption, isPending: filtering } = useUrlParams();
+    const { setPage, isPending: paging } = usePagination();
+    const { sortBy, sortDir, toggleSort, toggleSortOnOff, isPending: sorting } = useSort();
     // Tracks which row's enable/disable request is in flight, so only that
     // row's button shows a loading state instead of the whole table.
     const [togglingId, setTogglingId] = useState<number | null>(null);
@@ -49,33 +50,18 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
         return raw ? raw.split(",").map(Number) : [];
     }, [searchParams]);
 
+    // A changed filter goes back to page 1 (useUrlParams does that).
     const toggleServiceFilter = (serviceId: number) => {
-        const params = new URLSearchParams(searchParams.toString());
         const next = selectedServiceIds.includes(serviceId)
             ? selectedServiceIds.filter((id) => id !== serviceId)
             : [...selectedServiceIds, serviceId];
-        if (next.length > 0) {
-            params.set("serviceIds", next.join(","));
-        } else {
-            params.delete("serviceIds");
-        }
-        // Same reasoning as a sort change -- the old page number doesn't
-        // mean anything against a differently-filtered result set.
-        params.set("page", "1");
-        router.push(`?${params.toString()}`);
+        setParams({ serviceIds: next.length > 0 ? next.join(",") : null });
     };
 
     // Duty filter, also in the URL. Anything else in the URL reads as "all" (same as the server).
-    const dutyParam = searchParams.get("duty");
-    const duty: StaffDutyFilter = dutyParam === "on" || dutyParam === "off" ? dutyParam : "all";
+    const duty = getOption<StaffDutyFilter>("duty", STAFF_DUTY_FILTERS, "all");
 
-    const setDutyFilter = (value: StaffDutyFilter) => {
-        const params = new URLSearchParams(searchParams.toString());
-        if (value === "all") params.delete("duty");
-        else params.set("duty", value);
-        params.set("page", "1");
-        router.push(`?${params.toString()}`);
-    };
+    const setDutyFilter = (value: StaffDutyFilter) => setParams({ duty: value === "all" ? null : value });
 
     const handleToggleStatus = async (s: StaffListRow) => {
         setTogglingId(s.id);
@@ -198,9 +184,7 @@ export default function StaffTable({ staff, pagination, services }: StaffTablePr
                 columns={columns}
                 data={staff}
                 getRowKey={(s) => s.id}
-                // Data arrives already loaded with the page, so there's never
-                // an initial loading state here.
-                isLoading={false}
+                isPending={filtering || paging || sorting}
                 emptyMessage="No staff registered yet."
                 currentPage={pagination.page}
                 totalPages={pagination.totalPages}

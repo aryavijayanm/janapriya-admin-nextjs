@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { ClipboardPlus, Search } from "lucide-react";
 import { DataTable } from "@/components/ui/DataTable";
 import { Button } from "@/components/ui/Button";
@@ -9,6 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { Select } from "@/components/ui/Select";
 import type { TableColumn } from "@/components/ui/Table";
 import { usePagination } from "@/hooks/usePagination";
+import { useUrlParams } from "@/hooks/useUrlParams";
 import { formatDate } from "@/lib/date";
 import { formatCustomerCode } from "@/server/validators/customer";
 import type { PaginatedResult } from "@/server/db/paginate";
@@ -51,19 +52,12 @@ function Badge({ label, className }: { label: string; className: string }) {
 // the URL and passes the result in; this component only CHANGES the URL.
 export default function OrderTable({ orders, pagination, canSeeOutside }: OrderTableProps) {
     const router = useRouter();
-    const searchParams = useSearchParams();
-    const { setPage } = usePagination();
+    const { searchParams, setParams, isPending: filtering } = useUrlParams();
+    const { setPage, isPending: paging } = usePagination();
     const [search, setSearch] = useState(searchParams.get("search") ?? "");
 
-    // Sets (or clears) one filter in the URL. A different filter means a
-    // different result set, so it always goes back to page 1.
-    const setFilter = (key: "status" | "branch" | "search", value: string) => {
-        const params = new URLSearchParams(searchParams.toString());
-        if (value) params.set(key, value);
-        else params.delete(key);
-        params.set("page", "1");
-        router.push(`?${params.toString()}`);
-    };
+    // Sets (or clears, with "") one filter in the URL; back to page 1.
+    const setFilter = (key: "status" | "branch" | "search", value: string) => setParams({ [key]: value });
 
     const columns: TableColumn<OrderListItem>[] = [
         { header: "Code", accessor: (o) => <span className="font-mono font-semibold text-gray-800">{o.code}</span> },
@@ -159,8 +153,7 @@ export default function OrderTable({ orders, pagination, canSeeOutside }: OrderT
                 columns={columns}
                 data={orders}
                 getRowKey={(o) => o.id}
-                // Data arrives already loaded with the page.
-                isLoading={false}
+                isPending={filtering || paging}
                 emptyMessage="No orders found."
                 currentPage={pagination.page}
                 totalPages={pagination.totalPages}
